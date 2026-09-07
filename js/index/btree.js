@@ -1,0 +1,112 @@
+import { lowerBound, compareKeys } from "./key.js"
+import { ConstraintError, ValidationError } from "../errors.js"
+
+class Node {
+  constructor(leaf) {
+    this.leaf = leaf
+    this.keys = []
+    this.values = leaf ? [] : null
+    this.children = leaf ? null : []
+    this.next = null
+  }
+}
+
+export class BTree {
+  constructor(order = 32, unique = true) {
+    if (!Number.isSafeInteger(order) || order < 4) throw new ValidationError("B+Tree order must be at least four")
+    this.order = order
+    this.unique = unique
+    this.root = new Node(true)
+    this.size = 0
+    this.splits = 0
+  }
+
+  find(key) {
+    const leaf = this.findLeaf(key)
+    const index = lowerBound(leaf.keys, key)
+    return index < leaf.keys.length && compareKeys(leaf.keys[index], key) === 0 ? leaf.values[index] : undefined
+  }
+
+  insert(key, value) {
+    const path = []
+    const leaf = this.findLeaf(key, path)
+    let index = lowerBound(leaf.keys, key)
+    if (index < leaf.keys.length && compareKeys(leaf.keys[index], key) === 0) {
+      if (this.unique) throw new ConstraintError("Duplicate index key")
+      while (index < leaf.keys.length && compareKeys(leaf.keys[index], key) === 0) index += 1
+    }
+    leaf.keys.splice(index, 0, key)
+    leaf.values.splice(index, 0, value)
+    this.size += 1
+    if (leaf.keys.length >= this.order) this.splitLeaf(leaf, path)
+  }
+
+  findLeaf(key, path = []) {
+    let node = this.root
+    while (!node.leaf) {
+      let index = lowerBound(node.keys, key)
+      if (index < node.keys.length && compareKeys(key, node.keys[index]) >= 0) index += 1
+      path.push({ node, index })
+      node = node.children[index]
+    }
+    return node
+  }
+
+  splitLeaf(leaf, path) {
+    const middle = Math.ceil(leaf.keys.length / 2)
+    const right = new Node(true)
+    right.keys = leaf.keys.splice(middle)
+    right.values = leaf.values.splice(middle)
+    right.next = leaf.next
+    leaf.next = right
+    this.insertParent(leaf, right.keys[0], right, path)
+  }
+
+  insertParent(left, separator, right, path) {
+    this.splits += 1
+    if (!path.length) {
+      const root = new Node(false)
+      root.keys.push(separator)
+      root.children.push(left, right)
+      this.root = root
+      return
+    }
+    const { node: parent, index } = path.pop()
+    parent.keys.splice(index, 0, separator)
+    parent.children.splice(index + 1, 0, right)
+    if (parent.children.length > this.order) this.splitInternal(parent, path)
+  }
+
+  splitInternal(node, path) {
+    const middle = node.keys.length >> 1
+    const separator = node.keys[middle]
+    const right = new Node(false)
+    right.keys = node.keys.splice(middle + 1)
+    right.children = node.children.splice(middle + 1)
+    node.keys.splice(middle)
+    this.insertParent(node, separator, right, path)
+  }
+
+  *range(start, end) {
+    let leaf = this.findLeaf(start)
+    let index = lowerBound(leaf.keys, start)
+    while (leaf) {
+      while (index < leaf.keys.length) {
+        if (compareKeys(leaf.keys[index], end) > 0) return
+        yield { key: leaf.keys[index], value: leaf.values[index] }
+        index += 1
+      }
+      leaf = leaf.next
+      index = 0
+    }
+  }
+
+  *scan() {
+    let node = this.root
+    while (!node.leaf) node = node.children[0]
+    while (node) {
+      for (let index = 0; index < node.keys.length; index += 1) yield { key: node.keys[index], value: node.values[index] }
+      node = node.next
+    }
+  }
+}

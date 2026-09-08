@@ -41,6 +41,58 @@ export class BTree {
     if (leaf.keys.length >= this.order) this.splitLeaf(leaf, path)
   }
 
+  remove(key, value) {
+    const path = []
+    const leaf = this.findLeaf(key, path)
+    let index = lowerBound(leaf.keys, key)
+    while (index < leaf.keys.length && compareKeys(leaf.keys[index], key) === 0) {
+      if (value === undefined || Object.is(leaf.values[index], value)) {
+        leaf.keys.splice(index, 1)
+        leaf.values.splice(index, 1)
+        this.size -= 1
+        this.rebalanceLeaf(leaf, path)
+        return true
+      }
+      index += 1
+    }
+    return false
+  }
+
+  rebalanceLeaf(leaf, path) {
+    if (!path.length) return
+    const minimum = Math.ceil((this.order - 1) / 2)
+    if (leaf.keys.length >= minimum) return
+    const { node: parent, index } = path.pop()
+    const left = index > 0 ? parent.children[index - 1] : null
+    const right = index + 1 < parent.children.length ? parent.children[index + 1] : null
+    if (left && left.keys.length > minimum) {
+      leaf.keys.unshift(left.keys.pop())
+      leaf.values.unshift(left.values.pop())
+      parent.keys[index - 1] = leaf.keys[0]
+      return
+    }
+    if (right && right.keys.length > minimum) {
+      leaf.keys.push(right.keys.shift())
+      leaf.values.push(right.values.shift())
+      parent.keys[index] = right.keys[0]
+      return
+    }
+    if (left) {
+      left.keys.push(...leaf.keys)
+      left.values.push(...leaf.values)
+      left.next = leaf.next
+      parent.keys.splice(index - 1, 1)
+      parent.children.splice(index, 1)
+    } else if (right) {
+      leaf.keys.push(...right.keys)
+      leaf.values.push(...right.values)
+      leaf.next = right.next
+      parent.keys.splice(index, 1)
+      parent.children.splice(index + 1, 1)
+    }
+    if (parent === this.root && parent.children.length === 1) this.root = parent.children[0]
+  }
+
   findLeaf(key, path = []) {
     let node = this.root
     while (!node.leaf) {

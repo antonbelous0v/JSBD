@@ -35,6 +35,17 @@ export class Heap {
     finally { this.bufferPool.unpin(page, true) }
   }
 
+  update(rid, bytes) {
+    const page = this.bufferPool.get(rid.pageId)
+    try {
+      const slots = new SlottedPage(page)
+      const target = slots.get(rid.slotId)
+      if (!target || target.length !== bytes.length) throw new Error("Tuple update must preserve encoded length")
+      target.set(bytes)
+      return true
+    } finally { this.bufferPool.unpin(page, true) }
+  }
+
   *scan() {
     for (const pageId of this.pageIds) {
       const page = this.bufferPool.get(pageId)

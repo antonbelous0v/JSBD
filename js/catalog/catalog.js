@@ -36,6 +36,21 @@ export class Catalog {
     return table
   }
 
+  addIndex(tableName, definition) {
+    const table = this.getTable(tableName)
+    if ([...this.tables.values()].some(candidate => candidate.indexes.some(index => index.name === definition.name))) throw new ConstraintError(`Index ${definition.name} already exists`)
+    for (const column of definition.columns) table.schema.indexOf(column)
+    table.indexes.push({ name: definition.name, columns: [...definition.columns], unique: Boolean(definition.unique) })
+  }
+
+  dropIndex(name) {
+    for (const table of this.tables.values()) {
+      const index = table.indexes.findIndex(candidate => candidate.name === name)
+      if (index >= 0) { table.indexes.splice(index, 1); return }
+    }
+    throw new ConstraintError(`Index ${name} does not exist`)
+  }
+
   persist() {
     const bytes = encodeCatalog([...this.tables.values()])
     let page

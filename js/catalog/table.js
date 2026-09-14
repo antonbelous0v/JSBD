@@ -46,15 +46,7 @@ export class Table {
     let count = 0
     for (const item of [...this.scan(transaction)]) {
       if (!predicate(item.row)) continue
-      this.transactions.locks.acquire(transaction.id, `${this.schema.name}:${ridKey(item.rid)}`)
-      const oldBytes = this.heap.get(item.rid)
-      const version = TupleCodec.decode(this.schema, oldBytes)
-      const newBytes = TupleCodec.encode(this.schema, version.row, version.xmin, transaction.id)
-      this.heap.update(item.rid, newBytes)
-      this.removeFromIndexes(version.row, item.rid)
-      const lsn = this.transactions.wal.append(transaction.id, WalType.DELETE, item.rid.pageId, newBytes)
-      this.setPageLSN(item.rid.pageId, lsn)
-      transaction.addUndo(() => { this.heap.update(item.rid, oldBytes); this.addToIndexes(version.row, item.rid) })
+      this.deleteOne(item, transaction)
       count += 1
     }
     return count
@@ -66,11 +58,23 @@ export class Table {
       if (!predicate(item.row)) continue
       const input = Object.fromEntries(this.schema.columns.map((column, index) => [column.name, item.row[index]]))
       for (const [name, value] of Object.entries(changes)) input[name] = typeof value === "function" ? value(input[name], input) : value
-      this.deleteWhere((row, rid) => rid === item.rid, transaction)
+      this.deleteOne(item, transaction)
       this.insert(input, transaction)
       count += 1
     }
     return count
+  }
+
+  deleteOne(item, transaction) {
+    this.transactions.locks.acquire(transaction.id, `${this.schema.name}:${ridKey(item.rid)}`)
+    const oldBytes = this.heap.get(item.rid)
+    const version = TupleCodec.decode(this.schema, oldBytes)
+    const newBytes = TupleCodec.encode(this.schema, version.row, version.xmin, transaction.id)
+    this.heap.update(item.rid, newBytes)
+    this.removeFromIndexes(version.row, item.rid)
+    const lsn = this.transactions.wal.append(transaction.id, WalType.DELETE, item.rid.pageId, newBytes)
+    this.setPageLSN(item.rid.pageId, lsn)
+    transaction.addUndo(() => { this.heap.update(item.rid, oldBytes); this.addToIndexes(version.row, item.rid) })
   }
 
   *scan(transaction) {

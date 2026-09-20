@@ -35,6 +35,7 @@ export class Binder {
     const table = this.catalog.getTable(statement.table)
     if (statement.columns) for (const column of statement.columns) table.schema.indexOf(column)
     if (statement.assignments) for (const assignment of statement.assignments) table.schema.indexOf(assignment.column)
+    if (statement.assignments) for (const assignment of statement.assignments) this.bindExpression(assignment.value, [{ name: table.schema.name, alias: table.schema.name, schema: table.schema }])
     if (statement.where) this.bindExpression(statement.where, [{ name: table.schema.name, alias: table.schema.name, schema: table.schema }])
     return { ...statement, metadata: table }
   }

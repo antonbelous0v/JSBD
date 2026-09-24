@@ -13,7 +13,7 @@ export class Parser {
     const statements = []
     while (!this.at("EOF")) {
       statements.push(this.statement())
-      if (!this.match(";")) this.expect("EOF")
+      if (!this.match(";") && !this.at("EOF")) throw this.error(`Expected statement terminator, received ${this.current().value}`)
     }
     return statements
   }

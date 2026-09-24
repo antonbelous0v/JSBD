@@ -31,7 +31,6 @@ export class Lexer {
     const raw = this.sql.slice(start, this.position)
     const upper = raw.toUpperCase()
     if (upper === "TRUE" || upper === "FALSE") return { type: "literal", value: upper === "TRUE", position: start }
-    if (upper === "NULL") return { type: "literal", value: null, position: start }
     return { type: KEYWORDS.has(upper) ? "keyword" : "identifier", value: KEYWORDS.has(upper) ? upper : raw, position: start }
   }
 

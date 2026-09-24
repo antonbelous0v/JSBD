@@ -136,10 +136,11 @@ export class Parser {
     let left
     if (this.match("NOT") || this.match("-") || this.match("+")) left = { type: "unary", operator: this.previous().value, operand: this.expression(6) }
     else if (this.match("(")) { left = this.expression(); this.expect(")") }
+    else if (this.match("NULL")) left = { type: "literal", value: null }
     else if (this.current().type === "literal") { left = { type: "literal", value: this.current().value }; this.position += 1 }
     else if (this.match("*")) left = { type: "star" }
     else {
-      const name = this.identifier()
+      const name = ["COUNT", "SUM", "MIN", "MAX", "AVG"].includes(this.current().value) ? this.tokens[this.position++].value : this.identifier()
       if (this.match("(")) { const args = this.at("*") ? (this.position += 1, [{ type: "star" }]) : this.list(() => this.expression()); this.expect(")"); left = { type: "call", name: name.toUpperCase(), args } }
       else if (this.match(".")) left = { type: "column", table: name, name: this.identifier() }
       else left = { type: "column", table: null, name }

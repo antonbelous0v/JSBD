@@ -59,4 +59,15 @@ export class TransactionManager {
   requireActive(transaction) {
     if (!transaction || transaction.state !== TransactionState.ACTIVE) throw new Error("Transaction is not active")
   }
+
+  restore(records) {
+    let maximum = 0n
+    for (const record of records) {
+      if (record.transactionId > maximum) maximum = record.transactionId
+      if (record.type === WalType.BEGIN) this.states.set(record.transactionId, TransactionState.ACTIVE)
+      else if (record.type === WalType.COMMIT) this.states.set(record.transactionId, TransactionState.COMMITTED)
+      else if (record.type === WalType.ABORT) this.states.set(record.transactionId, TransactionState.ABORTED)
+    }
+    this.nextId = maximum + 1n
+  }
 }

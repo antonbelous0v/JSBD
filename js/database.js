@@ -34,6 +34,7 @@ export class Database {
     const wal = WriteAheadLog.open(host, `${path}.wal`)
     const bufferPool = new BufferPool(pager, 128, lsn => wal.sync(lsn))
     const transactions = new TransactionManager(wal, new LockTable())
+    transactions.restore(wal.records())
     const catalog = Catalog.load(bufferPool, pager.header.catalogRoot)
     return new Database(host, path, pager, wal, bufferPool, transactions, catalog)
   }

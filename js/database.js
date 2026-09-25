@@ -13,7 +13,7 @@ import { PhysicalPlanner } from "./planner/physical.js"
 import { Executor } from "./executor/executor.js"
 import { evaluate } from "./executor/expression.js"
 import { explain } from "./planner/explain.js"
-import { TransactionState, WalType } from "./constants.js"
+import { DataType, TransactionState, WalType } from "./constants.js"
 
 export class Database {
   constructor(host, path, pager, wal, bufferPool, transactions, catalog) {
@@ -145,7 +145,11 @@ export class Database {
     const table = this.table(statement.table)
     const columns = statement.columns ?? table.schema.columns.map(column => column.name)
     for (const values of statement.values) {
-      const input = Object.fromEntries(columns.map((column, index) => [column, evaluate(values[index], {})]))
+      const input = Object.fromEntries(columns.map((column, index) => {
+        const definition = table.schema.columns[table.schema.indexOf(column)]
+        const value = evaluate(values[index], {})
+        return [column, value === null ? null : definition.type === DataType.INT32 || definition.type === DataType.FLOAT64 ? Number(value) : definition.type === DataType.INT64 || definition.type === DataType.TIMESTAMP ? BigInt(value) : value]
+      }))
       table.insert(input, transaction)
     }
     this.catalog.persist()

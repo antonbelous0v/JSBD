@@ -1,6 +1,7 @@
 #include "host.h"
 
 #include <cstdlib>
+#include <iostream>
 #include <unistd.h>
 
 namespace mydb {
@@ -8,6 +9,12 @@ namespace mydb {
 namespace {
 void exit_process(const v8::FunctionCallbackInfo<v8::Value>& info) {
     std::exit(info.Length() ? info[0].As<v8::Int32>()->Value() : 0);
+}
+
+void read_line(const v8::FunctionCallbackInfo<v8::Value>& info) {
+    std::string line;
+    if (!std::getline(std::cin, line)) return info.GetReturnValue().Set(v8::Null(info.GetIsolate()));
+    info.GetReturnValue().Set(v8::String::NewFromUtf8(info.GetIsolate(), line.c_str()).ToLocalChecked());
 }
 }
 
@@ -19,6 +26,7 @@ void install_process(v8::Isolate* isolate, v8::Local<v8::Object> host, const std
     process->Set(context, v8::String::NewFromUtf8Literal(isolate, "argv"), argv).Check();
     process->Set(context, v8::String::NewFromUtf8Literal(isolate, "pid"), v8::Integer::New(isolate, getpid())).Check();
     process->Set(context, v8::String::NewFromUtf8Literal(isolate, "exit"), v8::Function::New(context, exit_process).ToLocalChecked()).Check();
+    process->Set(context, v8::String::NewFromUtf8Literal(isolate, "readLine"), v8::Function::New(context, read_line).ToLocalChecked()).Check();
     host->Set(context, v8::String::NewFromUtf8Literal(isolate, "process"), process).Check();
 }
 

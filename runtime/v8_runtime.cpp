@@ -48,6 +48,8 @@ int Runtime::run(const std::string& entry) {
     v8::Context::Scope context_scope(context);
     auto host = v8::Object::New(isolate_);
     install_fs(isolate_, host);
+    install_memory(isolate_, host);
+    install_runtime(isolate_, host);
     install_time(isolate_, host);
     install_process(isolate_, host, arguments_);
     install_logging(isolate_, host);

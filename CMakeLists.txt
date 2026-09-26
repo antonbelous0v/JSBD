@@ -15,6 +15,8 @@ add_executable(mydb
     runtime/v8_runtime.cpp
     runtime/module_loader.cpp
     runtime/bindings/fs.cpp
+    runtime/bindings/memory.cpp
+    runtime/bindings/runtime.cpp
     runtime/bindings/time.cpp
     runtime/bindings/process.cpp
     runtime/bindings/logging.cpp

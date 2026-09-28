@@ -18,6 +18,8 @@ function binary(operator, left, right) {
   if (operator === "AND") return sqlBoolean(left) && sqlBoolean(right)
   if (operator === "OR") return sqlBoolean(left) || sqlBoolean(right)
   if (left === null || right === null) return null
+  if (typeof left === "number" && typeof right === "bigint") right = Number(right)
+  if (typeof left === "bigint" && typeof right === "number") left = Number(left)
   if (operator === "=") return left === right
   if (operator === "!=") return left !== right
   if (operator === "<") return left < right

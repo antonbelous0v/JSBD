@@ -160,7 +160,11 @@ export class Database {
   update(statement, transaction) {
     const table = this.table(statement.table)
     const predicate = row => !statement.where || evaluate(statement.where, { [statement.table]: row }) === true
-    const changes = Object.fromEntries(statement.assignments.map(assignment => [assignment.column, (_, input) => evaluate(assignment.value, { [statement.table]: table.schema.columns.map(column => input[column.name]) })]))
+    const changes = Object.fromEntries(statement.assignments.map(assignment => [assignment.column, (_, input) => {
+      const column = table.schema.columns[table.schema.indexOf(assignment.column)]
+      const value = evaluate(assignment.value, { [statement.table]: table.schema.columns.map(definition => input[definition.name]) })
+      return value === null ? null : column.type === DataType.INT32 || column.type === DataType.FLOAT64 ? Number(value) : column.type === DataType.INT64 || column.type === DataType.TIMESTAMP ? BigInt(value) : value
+    }]))
     return { status: "UPDATE", rows: table.updateWhere(predicate, changes, transaction) }
   }
 

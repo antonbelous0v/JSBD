@@ -40,3 +40,17 @@ test("updates deletes and rollbacks preserve row versions", () => {
   database.close()
   fs.rmSync(directory, { recursive: true })
 })
+
+test("primary unique not null and foreign keys reject invalid rows", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "mydb-constraints-"))
+  const database = Database.open(path.join(directory, "data.db"), createHost())
+  database.execute("CREATE TABLE users (id BIGINT PRIMARY KEY, email TEXT UNIQUE NOT NULL)")
+  database.execute("CREATE TABLE orders (id BIGINT PRIMARY KEY, user_id BIGINT REFERENCES users(id))")
+  database.execute("INSERT INTO users VALUES (1, 'ada@example.test')")
+  assert.throws(() => database.execute("INSERT INTO users VALUES (2, 'ada@example.test')"), /Unique constraint/)
+  assert.throws(() => database.execute("INSERT INTO users VALUES (3, NULL)"), /cannot be null/)
+  assert.throws(() => database.execute("INSERT INTO orders VALUES (1, 99)"), /Foreign key/)
+  database.execute("INSERT INTO orders VALUES (1, 1)")
+  database.close()
+  fs.rmSync(directory, { recursive: true })
+})

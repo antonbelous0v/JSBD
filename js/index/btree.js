@@ -46,7 +46,7 @@ export class BTree {
     const leaf = this.findLeaf(key, path)
     let index = lowerBound(leaf.keys, key)
     while (index < leaf.keys.length && compareKeys(leaf.keys[index], key) === 0) {
-      if (value === undefined || Object.is(leaf.values[index], value)) {
+      if (value === undefined || sameValue(leaf.values[index], value)) {
         leaf.keys.splice(index, 1)
         leaf.values.splice(index, 1)
         this.size -= 1
@@ -161,4 +161,9 @@ export class BTree {
       node = node.next
     }
   }
+}
+
+function sameValue(left, right) {
+  if (Object.is(left, right)) return true
+  return left && right && left.pageId === right.pageId && left.slotId === right.slotId
 }

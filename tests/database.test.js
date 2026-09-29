@@ -67,3 +67,18 @@ test("joins limits aggregates and explain use the query pipeline", () => {
   database.close()
   fs.rmSync(directory, { recursive: true })
 })
+
+test("rolled back DDL stays absent after restart", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "mydb-ddl-"))
+  const file = path.join(directory, "data.db")
+  const host = createHost()
+  let database = Database.open(file, host)
+  database.execute("BEGIN")
+  database.execute("CREATE TABLE temporary_table (id BIGINT PRIMARY KEY)")
+  database.execute("ROLLBACK")
+  database.close()
+  database = Database.open(file, host)
+  assert.throws(() => database.execute("SELECT * FROM temporary_table"), /does not exist/)
+  database.close()
+  fs.rmSync(directory, { recursive: true })
+})

@@ -54,3 +54,16 @@ test("primary unique not null and foreign keys reject invalid rows", () => {
   database.close()
   fs.rmSync(directory, { recursive: true })
 })
+
+test("joins limits aggregates and explain use the query pipeline", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "mydb-query-"))
+  const database = Database.open(path.join(directory, "data.db"), createHost())
+  database.execute("CREATE TABLE users (id BIGINT PRIMARY KEY, name TEXT NOT NULL)")
+  database.execute("CREATE TABLE orders (id BIGINT PRIMARY KEY, user_id BIGINT NOT NULL, amount INT NOT NULL)")
+  database.execute("INSERT INTO users VALUES (1, 'Ada'), (2, 'Grace')")
+  database.execute("INSERT INTO orders VALUES (1, 1, 20), (2, 1, 30), (3, 2, 40)")
+  assert.deepEqual(database.execute("SELECT u.name, o.amount FROM users AS u INNER JOIN orders AS o ON o.user_id = u.id ORDER BY o.amount DESC LIMIT 2"), [["Grace", 40], ["Ada", 30]])
+  assert.match(database.execute("EXPLAIN SELECT name FROM users WHERE id = 1"), /IndexScan/)
+  database.close()
+  fs.rmSync(directory, { recursive: true })
+})

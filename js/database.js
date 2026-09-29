@@ -110,6 +110,7 @@ export class Database {
   createTable(statement, transaction) {
     const schema = new TableSchema({ name: statement.name, columns: statement.columns.map(column => new Column({ name: column.name, type: column.dataType, nullable: column.nullable, references: column.references })), primaryKey: statement.primaryKey, unique: statement.unique })
     const table = this.catalog.createTable(schema)
+    for (const columns of schema.unique) table.indexes.push({ name: `${schema.name}_${columns.join("_")}_key`, columns, unique: true })
     transaction.addUndo(() => { this.catalog.dropTable(schema.name); this.tables.delete(schema.name) })
     this.catalog.persist()
     return { status: "CREATE TABLE", table: table.schema.name }

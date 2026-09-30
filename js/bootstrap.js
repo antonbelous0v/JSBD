@@ -1,15 +1,26 @@
 import { Database } from "./database.js"
 import { runShell } from "./cli/shell.js"
+import { formatRows } from "./cli/format.js"
+import { inspectPage } from "./cli/inspect_page.js"
+import { inspectWal } from "./cli/inspect_wal.js"
 
 const argumentsList = Host.process.argv.slice(1)
-const path = argumentsList.find(argument => !argument.startsWith("--"))
+const command = argumentsList[0]
 
-if (!path) throw new Error("Usage: mydb database.db [--shell]")
+if (command === "inspect-page") {
+  print(formatRows(inspectPage(Host, argumentsList[1], Number(argumentsList[2]))))
+} else if (command === "inspect-wal") {
+  print(formatRows(inspectWal(Host, argumentsList[1])))
+} else {
+  const path = argumentsList.find(argument => !argument.startsWith("--"))
 
-const database = Database.open(path)
+  if (!path) throw new Error("Usage: mydb database.db [--shell]")
 
-try {
-  if (argumentsList.includes("--shell")) runShell(database)
-} finally {
-  database.close()
+  const database = Database.open(path)
+
+  try {
+    if (argumentsList.includes("--shell")) runShell(database)
+  } finally {
+    database.close()
+  }
 }

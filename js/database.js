@@ -67,7 +67,7 @@ export class Database {
       if (owned) this.transactions.commit(transaction)
       return result
     } catch (error) {
-      if (owned && transaction.state === TransactionState.ACTIVE) this.transactions.rollback(transaction)
+      if (owned && transaction.state === TransactionState.ACTIVE) { this.transactions.rollback(transaction); this.catalog.persist(); this.tables.clear() }
       throw error
     }
   }
@@ -102,6 +102,7 @@ export class Database {
   rollback() {
     if (!this.currentTransaction) throw new Error("No active transaction")
     this.transactions.rollback(this.currentTransaction)
+    this.catalog.persist()
     this.currentTransaction = null
     this.tables.clear()
     return { status: "ROLLBACK" }

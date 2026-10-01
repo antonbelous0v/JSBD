@@ -197,7 +197,7 @@ export class Database {
   }
 
   stats() {
-    return { bufferPoolHits: this.bufferPool.hits, bufferPoolMisses: this.bufferPool.misses, walBytesWritten: this.wal.bytesWritten, walFsyncs: this.wal.fsyncs, transactionsCommitted: this.transactions.committed, transactionsAborted: this.transactions.aborted, queriesExecuted: this.queriesExecuted, btreeSplits: [...this.tables.values()].reduce((total, table) => total + [...table.indexes.values()].reduce((sum, index) => sum + index.tree.splits, 0), 0) }
+    return { bufferPoolHits: this.bufferPool.hits, bufferPoolMisses: this.bufferPool.misses, pagesRead: this.pager.pagesRead, pagesWritten: this.pager.pagesWritten, walBytesWritten: this.wal.bytesWritten, walFsyncs: this.wal.fsyncs, transactionsCommitted: this.transactions.committed, transactionsAborted: this.transactions.aborted, queriesExecuted: this.queriesExecuted, btreeSplits: [...this.tables.values()].reduce((total, table) => total + [...table.indexes.values()].reduce((sum, index) => sum + index.tree.splits, 0), 0) }
   }
 
   close() {

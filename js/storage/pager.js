@@ -10,6 +10,8 @@ export class Pager {
     this.fd = fd
     this.header = header
     this.freePages = []
+    this.pagesRead = 0
+    this.pagesWritten = 0
   }
 
   static open(host, path) {
@@ -37,12 +39,14 @@ export class Pager {
     if (pageId >= this.header.pageCount) throw new CorruptionError(`Page ${pageId} does not exist`)
     const bytes = new Uint8Array(PAGE_SIZE)
     if (this.host.fs.pread(this.fd, bytes, 0, PAGE_SIZE, pageId * PAGE_SIZE) !== PAGE_SIZE) throw new CorruptionError(`Short read for page ${pageId}`)
+    this.pagesRead += 1
     return Page.decode(bytes, pageId)
   }
 
   write(page) {
     page.seal()
     if (this.host.fs.pwrite(this.fd, page.bytes, 0, PAGE_SIZE, page.id * PAGE_SIZE) !== PAGE_SIZE) throw new Error(`Short write for page ${page.id}`)
+    this.pagesWritten += 1
     page.dirty = false
   }
 

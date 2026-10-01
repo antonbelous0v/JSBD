@@ -47,3 +47,10 @@ test("recovery redoes committed work and undoes incomplete work", () => {
   assert.deepEqual(actions, ["redo:2", "undo:5"])
   assert.deepEqual(result, { redone: 1, undone: 1 })
 })
+
+test("WAL checksum catches torn records", () => {
+  const record = new WalRecord({ lsn: 1n, transactionId: 1n, type: WalType.INSERT, payload: new Uint8Array([1, 2, 3]) })
+  const bytes = record.encode()
+  bytes[bytes.length - 1] ^= 255
+  assert.throws(() => WalRecord.decode(bytes), /checksum/)
+})

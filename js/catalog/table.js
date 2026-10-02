@@ -66,6 +66,7 @@ export class Table {
   }
 
   deleteOne(item, transaction) {
+    this.catalog.assertDeleteAllowed(this.schema.name, item.row, transaction)
     this.transactions.locks.acquire(transaction.id, `${this.schema.name}:${ridKey(item.rid)}`)
     const oldBytes = this.heap.get(item.rid)
     const version = TupleCodec.decode(this.schema, oldBytes)

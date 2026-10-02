@@ -45,3 +45,20 @@ test("pager refuses corrupted page contents", () => {
   pager.close()
   fs.rmSync(directory, { recursive: true })
 })
+
+test("buffer pool evicts unpinned dirty pages", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "mydb-buffer-"))
+  const file = path.join(directory, "data.db")
+  const pager = Pager.open(createHost(), file)
+  const pool = new BufferPool(pager, 2)
+  const first = pool.allocate(PageType.HEAP)
+  first.bytes[100] = 77
+  pool.unpin(first, true)
+  const second = pool.allocate(PageType.HEAP)
+  pool.unpin(second)
+  const third = pool.allocate(PageType.HEAP)
+  pool.unpin(third)
+  assert.equal(pager.read(first.id).bytes[100], 77)
+  pager.close()
+  fs.rmSync(directory, { recursive: true })
+})

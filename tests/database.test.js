@@ -99,3 +99,18 @@ test("secondary indexes rebuild from persisted heap rows", () => {
   database.close()
   fs.rmSync(directory, { recursive: true })
 })
+
+test("database metrics expose storage transaction and query work", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "mydb-stats-"))
+  const database = Database.open(path.join(directory, "data.db"), createHost())
+  database.execute("CREATE TABLE metric_values (id BIGINT PRIMARY KEY)")
+  database.execute("INSERT INTO metric_values VALUES (1)")
+  database.execute("SELECT * FROM metric_values")
+  const stats = database.stats()
+  assert.equal(stats.transactionsCommitted, 3)
+  assert.equal(stats.queriesExecuted, 3)
+  assert.ok(stats.pagesWritten > 0)
+  assert.ok(stats.walFsyncs > 0)
+  database.close()
+  fs.rmSync(directory, { recursive: true })
+})

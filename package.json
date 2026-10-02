@@ -4,6 +4,9 @@
   "type": "module",
   "scripts": {
     "test": "node --test tests/*.test.js",
-    "check": "node --check js/bootstrap.js"
+    "check": "node --check js/bootstrap.js",
+    "benchmark:btree": "node benchmarks/btree.js",
+    "benchmark:database": "node benchmarks/database.js",
+    "fuzz:sql": "node fuzz/sql_parser.js"
   }
 }

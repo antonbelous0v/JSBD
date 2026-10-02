@@ -51,6 +51,7 @@ test("primary unique not null and foreign keys reject invalid rows", () => {
   assert.throws(() => database.execute("INSERT INTO users VALUES (3, NULL)"), /cannot be null/)
   assert.throws(() => database.execute("INSERT INTO orders VALUES (1, 99)"), /Foreign key/)
   database.execute("INSERT INTO orders VALUES (1, 1)")
+  assert.throws(() => database.execute("DELETE FROM users WHERE id = 1"), /Delete restricted/)
   database.close()
   fs.rmSync(directory, { recursive: true })
 })

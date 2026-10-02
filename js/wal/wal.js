@@ -15,10 +15,15 @@ export class WriteAheadLog {
 
   static open(host, path) {
     const fd = host.fs.open(path, host.fs.O_RDWR | host.fs.O_CREAT)
-    const size = host.fs.size(fd)
+    let size = host.fs.size(fd)
     let nextLSN = 1n
     if (size) {
       const records = [...WriteAheadLog.readAll(host, fd, size)]
+      const validSize = records.reduce((total, record) => total + record.encode().length, 0)
+      if (validSize < size) {
+        host.fs.truncate(fd, validSize)
+        size = validSize
+      }
       if (records.length) nextLSN = records.at(-1).lsn + 1n
     }
     return new WriteAheadLog(host, path, fd, size, nextLSN)
@@ -46,11 +51,11 @@ export class WriteAheadLog {
   static *readAll(host, fd, size) {
     let offset = 0
     while (offset < size) {
-      if (size - offset < WAL_HEADER_SIZE) throw new CorruptionError("Truncated WAL header")
+      if (size - offset < WAL_HEADER_SIZE) return
       const header = new Uint8Array(WAL_HEADER_SIZE)
       if (host.fs.pread(fd, header, 0, header.length, offset) !== header.length) throw new CorruptionError("Cannot read WAL header")
       const length = new DataView(header.buffer).getUint32(4, true)
-      if (length < WAL_HEADER_SIZE || offset + length > size) throw new CorruptionError("Truncated WAL record")
+      if (length < WAL_HEADER_SIZE || offset + length > size) return
       const bytes = new Uint8Array(length)
       if (host.fs.pread(fd, bytes, 0, length, offset) !== length) throw new CorruptionError("Cannot read WAL record")
       yield WalRecord.decode(bytes)

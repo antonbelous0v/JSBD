@@ -74,4 +74,6 @@ export class BufferPool {
     for (const page of this.frames.values()) this.flushPage(page)
     this.pager.sync()
   }
+
+  dirtyPages() { return [...this.frames.values()].filter(page => page.dirty) }
 }

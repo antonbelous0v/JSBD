@@ -62,3 +62,18 @@ test("buffer pool evicts unpinned dirty pages", () => {
   pager.close()
   fs.rmSync(directory, { recursive: true })
 })
+
+test("allocated pages reach disk before the header references them", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "mydb-allocation-"))
+  const file = path.join(directory, "data.db")
+  const host = createHost()
+  const pager = Pager.open(host, file)
+  const page = pager.allocate(PageType.CATALOG)
+  assert.equal(page.id, 1)
+  assert.equal(host.fs.size(pager.fd), 2 * 8192)
+  pager.close()
+  const reopened = Pager.open(host, file)
+  assert.equal(reopened.read(1).type, PageType.CATALOG)
+  reopened.close()
+  fs.rmSync(directory, { recursive: true })
+})

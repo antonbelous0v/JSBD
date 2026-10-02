@@ -11,3 +11,12 @@ test("B+Tree survives splits ranges and merges", () => {
   for (let value = 0; value <= 100; value += 2) assert.equal(tree.remove(value), true)
   assert.deepEqual([...tree.scan()].map(entry => entry.key), Array.from({ length: 50 }, (_, index) => index * 2 + 1))
 })
+
+test("B+Tree collapses internal levels after large deletes", () => {
+  const tree = new BTree(4)
+  for (let value = 0; value < 2000; value += 1) tree.insert(value, value)
+  for (let value = 0; value < 1999; value += 1) assert.equal(tree.remove(value), true)
+  assert.equal(tree.find(1999), 1999)
+  assert.equal(tree.root.leaf, true)
+  assert.deepEqual([...tree.scan()].map(entry => entry.key), [1999])
+})

@@ -51,9 +51,15 @@ export class Pager {
   }
 
   allocate(type) {
-    const pageId = this.freePages.pop() ?? this.header.pageCount++
+    const reusedPageId = this.freePages.pop()
+    const pageId = reusedPageId ?? this.header.pageCount
     const page = Page.create(pageId, type)
-    this.persistHeader()
+    this.write(page)
+    this.host.fs.fdatasync(this.fd)
+    if (reusedPageId === undefined) {
+      this.header.pageCount += 1
+      this.persistHeader()
+    }
     return page
   }
 
@@ -63,10 +69,18 @@ export class Pager {
   }
 
   persistHeader() {
+    const page = this.headerPage()
+    this.write(page)
+    this.sync()
+  }
+
+  headerPage() {
     const page = this.read(0)
     this.header.encode(page.bytes.subarray(40, 40 + DATABASE_HEADER_SIZE))
-    this.write(page)
+    return page
   }
+
+  reloadHeader() { this.header = DatabaseHeader.decode(this.read(0).bytes.subarray(40, 40 + DATABASE_HEADER_SIZE)) }
 
   sync() { this.host.fs.fsync(this.fd) }
   close() { this.host.fs.close(this.fd) }

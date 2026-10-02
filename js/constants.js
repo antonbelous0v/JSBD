@@ -24,7 +24,8 @@ export const WalType = Object.freeze({
   PAGE_FREE: 6,
   COMMIT: 7,
   ABORT: 8,
-  CHECKPOINT: 9
+  CHECKPOINT: 9,
+  PAGE_WRITE: 10
 })
 
 export const TransactionState = Object.freeze({

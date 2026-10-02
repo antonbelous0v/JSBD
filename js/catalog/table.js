@@ -3,7 +3,7 @@ import { Heap } from "../storage/heap.js"
 import { TupleCodec } from "../storage/tuple_codec.js"
 import { isVisible } from "../transaction/snapshot.js"
 import { ConstraintError } from "../errors.js"
-import { WalType } from "../constants.js"
+import { TransactionState, WalType } from "../constants.js"
 
 function ridKey(rid) { return `${rid.pageId}:${rid.slotId}` }
 
@@ -24,7 +24,7 @@ export class Table {
     for (const definition of definitions) this.indexes.set(definition.name, { definition, tree: new BTree(32, definition.unique) })
     for (const entry of this.heap.scan()) {
       const version = TupleCodec.decode(this.schema, entry.bytes)
-      if (version.xmax === 0n) this.addToIndexes(version.row, entry.rid)
+      if (this.transactions.states.get(version.xmin) === TransactionState.COMMITTED && (version.xmax === 0n || this.transactions.states.get(version.xmax) !== TransactionState.COMMITTED)) this.addToIndexes(version.row, entry.rid)
     }
   }
 

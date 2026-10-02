@@ -54,3 +54,45 @@ test("WAL checksum catches torn records", () => {
   bytes[bytes.length - 1] ^= 255
   assert.throws(() => WalRecord.decode(bytes), /checksum/)
 })
+
+test("WAL ignores an incomplete final record", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "mydb-wal-tail-"))
+  const file = path.join(directory, "data.wal")
+  const host = createHost()
+  let wal = WriteAheadLog.open(host, file)
+  wal.append(1n, WalType.BEGIN, 0xffffffff, new Uint8Array())
+  wal.sync()
+  const offset = wal.offset
+  wal.close()
+  const fd = host.fs.open(file, host.fs.O_RDWR)
+  host.fs.pwrite(fd, new Uint8Array([1, 2, 3]), 0, 3, offset)
+  host.fs.close(fd)
+  wal = WriteAheadLog.open(host, file)
+  assert.deepEqual([...wal.records()].map(record => record.type), [WalType.BEGIN])
+  wal.append(2n, WalType.BEGIN, 0xffffffff, new Uint8Array())
+  wal.sync()
+  wal.close()
+  wal = WriteAheadLog.open(host, file)
+  assert.deepEqual([...wal.records()].map(record => record.transactionId), [1n, 2n])
+  wal.close()
+  fs.rmSync(directory, { recursive: true })
+})
+
+test("WAL rejects a complete record with a bad checksum", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "mydb-wal-corrupt-"))
+  const file = path.join(directory, "data.wal")
+  const host = createHost()
+  const wal = WriteAheadLog.open(host, file)
+  wal.append(1n, WalType.BEGIN, 0xffffffff, new Uint8Array([1]))
+  wal.sync()
+  const offset = wal.offset
+  wal.close()
+  const fd = host.fs.open(file, host.fs.O_RDWR)
+  const byte = new Uint8Array(1)
+  host.fs.pread(fd, byte, 0, 1, offset - 1)
+  byte[0] ^= 255
+  host.fs.pwrite(fd, byte, 0, 1, offset - 1)
+  host.fs.close(fd)
+  assert.throws(() => WriteAheadLog.open(host, file), /checksum/)
+  fs.rmSync(directory, { recursive: true })
+})

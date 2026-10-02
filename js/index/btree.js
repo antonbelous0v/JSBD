@@ -90,7 +90,43 @@ export class BTree {
       parent.keys.splice(index, 1)
       parent.children.splice(index + 1, 1)
     }
-    if (parent === this.root && parent.children.length === 1) this.root = parent.children[0]
+    this.rebalanceInternal(parent, path)
+  }
+
+  rebalanceInternal(node, path) {
+    if (node === this.root) {
+      if (node.children.length === 1) this.root = node.children[0]
+      return
+    }
+    const minimum = Math.ceil(this.order / 2)
+    if (node.children.length >= minimum) return
+    const { node: parent, index } = path.pop()
+    const left = index > 0 ? parent.children[index - 1] : null
+    const right = index + 1 < parent.children.length ? parent.children[index + 1] : null
+    if (left && left.children.length > minimum) {
+      node.keys.unshift(parent.keys[index - 1])
+      node.children.unshift(left.children.pop())
+      parent.keys[index - 1] = left.keys.pop()
+      return
+    }
+    if (right && right.children.length > minimum) {
+      node.keys.push(parent.keys[index])
+      node.children.push(right.children.shift())
+      parent.keys[index] = right.keys.shift()
+      return
+    }
+    if (left) {
+      left.keys.push(parent.keys[index - 1], ...node.keys)
+      left.children.push(...node.children)
+      parent.keys.splice(index - 1, 1)
+      parent.children.splice(index, 1)
+    } else if (right) {
+      node.keys.push(parent.keys[index], ...right.keys)
+      node.children.push(...right.children)
+      parent.keys.splice(index, 1)
+      parent.children.splice(index + 1, 1)
+    }
+    this.rebalanceInternal(parent, path)
   }
 
   findLeaf(key, path = []) {

@@ -1,6 +1,8 @@
 import { BufferPool } from "./storage/buffer_pool.js"
 import { Pager } from "./storage/pager.js"
+import { Page } from "./storage/page.js"
 import { WriteAheadLog } from "./wal/wal.js"
+import { Recovery } from "./wal/recovery.js"
 import { LockTable } from "./transaction/lock_table.js"
 import { TransactionManager } from "./transaction/transaction.js"
 import { Catalog } from "./catalog/catalog.js"
@@ -32,6 +34,17 @@ export class Database {
   static open(path, host = Host) {
     const pager = Pager.open(host, path)
     const wal = WriteAheadLog.open(host, `${path}.wal`)
+    new Recovery(wal, {
+      redo(record) {
+        if (record.type !== WalType.PAGE_WRITE) return
+        let current = null
+        try { current = pager.read(record.pageId) } catch {}
+        if (!current || current.pageLSN < record.lsn) pager.write(Page.decode(new Uint8Array(record.payload), record.pageId))
+      },
+      undo() {}
+    }).run(pager.header.checkpointLSN)
+    pager.sync()
+    pager.reloadHeader()
     const bufferPool = new BufferPool(pager, 128, lsn => wal.sync(lsn))
     const transactions = new TransactionManager(wal, new LockTable())
     transactions.restore(wal.records())
@@ -76,10 +89,10 @@ export class Database {
     const transaction = this.currentTransaction ?? this.transactions.begin()
     try {
       const result = this.run(bound, transaction)
-      if (owned) this.transactions.commit(transaction)
+      if (owned) this.commitTransaction(transaction)
       return result
     } catch (error) {
-      if (owned && transaction.state === TransactionState.ACTIVE) { this.transactions.rollback(transaction); this.catalog.persist(); this.tables.clear() }
+      if (owned && transaction.state === TransactionState.ACTIVE) { this.transactions.rollback(transaction); this.tables.clear() }
       throw error
     }
   }
@@ -105,8 +118,7 @@ export class Database {
 
   commit() {
     if (!this.currentTransaction) throw new Error("No active transaction")
-    this.catalog.persist()
-    this.transactions.commit(this.currentTransaction)
+    this.commitTransaction(this.currentTransaction)
     this.currentTransaction = null
     return { status: "COMMIT" }
   }
@@ -114,10 +126,24 @@ export class Database {
   rollback() {
     if (!this.currentTransaction) throw new Error("No active transaction")
     this.transactions.rollback(this.currentTransaction)
-    this.catalog.persist()
     this.currentTransaction = null
     this.tables.clear()
     return { status: "ROLLBACK" }
+  }
+
+  commitTransaction(transaction) {
+    const headerChanged = this.catalog.persist()
+    const pages = this.bufferPool.dirtyPages()
+    if (headerChanged) pages.push(this.pager.headerPage())
+    for (const page of pages) {
+      page.pageLSN = this.wal.nextLSN
+      page.seal()
+      this.wal.append(transaction.id, WalType.PAGE_WRITE, page.id, new Uint8Array(page.bytes))
+    }
+    this.transactions.commit(transaction)
+    this.host.debug.crashPoint("after-commit-before-page-flush")
+    for (const page of pages) this.pager.write(page)
+    this.pager.sync()
   }
 
   createTable(statement, transaction) {
@@ -125,7 +151,6 @@ export class Database {
     const table = this.catalog.createTable(schema)
     for (const columns of schema.unique) table.indexes.push({ name: `${schema.name}_${columns.join("_")}_key`, columns, unique: true })
     transaction.addUndo(() => { this.catalog.dropTable(schema.name); this.tables.delete(schema.name) })
-    this.catalog.persist()
     return { status: "CREATE TABLE", table: table.schema.name }
   }
 
@@ -134,7 +159,6 @@ export class Database {
     this.catalog.dropTable(statement.name)
     this.tables.delete(statement.name)
     transaction.addUndo(() => this.catalog.tables.set(statement.name, metadata))
-    this.catalog.persist()
     return { status: "DROP TABLE" }
   }
 
@@ -142,7 +166,6 @@ export class Database {
     this.catalog.addIndex(statement.table, statement)
     this.tables.delete(statement.table)
     transaction.addUndo(() => { this.catalog.dropIndex(statement.name); this.tables.delete(statement.table) })
-    this.catalog.persist()
     return { status: "CREATE INDEX" }
   }
 
@@ -152,7 +175,6 @@ export class Database {
     this.catalog.dropIndex(statement.name)
     this.tables.delete(owner.schema.name)
     transaction.addUndo(() => owner.indexes.push(definition))
-    this.catalog.persist()
     return { status: "DROP INDEX" }
   }
 
@@ -167,7 +189,7 @@ export class Database {
       }))
       table.insert(input, transaction)
     }
-    this.catalog.persist()
+    this.catalog.markDirty()
     return { status: "INSERT", rows: statement.values.length }
   }
 
@@ -179,7 +201,9 @@ export class Database {
       const value = evaluate(assignment.value, { [statement.table]: table.schema.columns.map(definition => input[definition.name]) })
       return value === null ? null : column.type === DataType.INT32 || column.type === DataType.FLOAT64 ? Number(value) : column.type === DataType.INT64 || column.type === DataType.TIMESTAMP ? BigInt(value) : value
     }]))
-    return { status: "UPDATE", rows: table.updateWhere(predicate, changes, transaction) }
+    const rows = table.updateWhere(predicate, changes, transaction)
+    if (rows) this.catalog.markDirty()
+    return { status: "UPDATE", rows }
   }
 
   delete(statement, transaction) {

@@ -59,12 +59,18 @@ int Runtime::run(const std::string& entry) {
     v8::TryCatch errors(isolate_);
     auto module = loader.load(context, entry).ToLocalChecked();
     if (module->InstantiateModule(context, ModuleLoader::resolve).IsNothing()) throw std::runtime_error("Module instantiation failed");
-    if (module->Evaluate(context).IsEmpty()) {
+    v8::Local<v8::Value> evaluation;
+    if (!module->Evaluate(context).ToLocal(&evaluation)) {
         v8::String::Utf8Value message(isolate_, errors.Exception());
         throw std::runtime_error(*message ? *message : "JavaScript execution failed");
     }
     while (v8::platform::PumpMessageLoop(platform_.get(), isolate_)) {}
     isolate_->PerformMicrotaskCheckpoint();
+    auto promise = evaluation.As<v8::Promise>();
+    if (promise->State() == v8::Promise::kRejected) {
+        v8::String::Utf8Value message(isolate_, promise->Result());
+        throw std::runtime_error(*message ? *message : "JavaScript promise rejected");
+    }
     return 0;
 }
 

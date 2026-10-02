@@ -2,7 +2,11 @@
 
 #include <cstdlib>
 #include <iostream>
+#if defined(_WIN32)
+#include <process.h>
+#else
 #include <unistd.h>
+#endif
 
 namespace mydb {
 
@@ -24,7 +28,11 @@ void install_process(v8::Isolate* isolate, v8::Local<v8::Object> host, const std
     auto argv = v8::Array::New(isolate, arguments.size());
     for (std::size_t index = 0; index < arguments.size(); ++index) argv->Set(context, index, v8::String::NewFromUtf8(isolate, arguments[index].c_str()).ToLocalChecked()).Check();
     process->Set(context, v8::String::NewFromUtf8Literal(isolate, "argv"), argv).Check();
-    process->Set(context, v8::String::NewFromUtf8Literal(isolate, "pid"), v8::Integer::New(isolate, getpid())).Check();
+#if defined(_WIN32)
+    process->Set(context, v8::String::NewFromUtf8Literal(isolate, "pid"), v8::Integer::New(isolate, ::_getpid())).Check();
+#else
+    process->Set(context, v8::String::NewFromUtf8Literal(isolate, "pid"), v8::Integer::New(isolate, ::getpid())).Check();
+#endif
     process->Set(context, v8::String::NewFromUtf8Literal(isolate, "exit"), v8::Function::New(context, exit_process).ToLocalChecked()).Check();
     process->Set(context, v8::String::NewFromUtf8Literal(isolate, "readLine"), v8::Function::New(context, read_line).ToLocalChecked()).Check();
     host->Set(context, v8::String::NewFromUtf8Literal(isolate, "process"), process).Check();

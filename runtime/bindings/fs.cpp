@@ -1,16 +1,65 @@
 #include "host.h"
 
 #include <cerrno>
+#include <cstdint>
 #include <cstring>
 #include <fcntl.h>
 #include <filesystem>
 #include <stdexcept>
+#if defined(_WIN32)
+#include <io.h>
+#include <sys/stat.h>
+#include <windows.h>
+#else
 #include <sys/stat.h>
 #include <unistd.h>
+#endif
 
 namespace mydb {
 
 namespace {
+#if defined(_WIN32)
+int system_open(const char* path, int flags) { return ::_open(path, flags | _O_BINARY, 0600); }
+int system_close(int fd) { return ::_close(fd); }
+std::int64_t system_pread(int fd, void* buffer, std::size_t length, std::int64_t offset) {
+    OVERLAPPED operation {};
+    operation.Offset = static_cast<DWORD>(offset);
+    operation.OffsetHigh = static_cast<DWORD>(offset >> 32);
+    DWORD transferred = 0;
+    return ReadFile(reinterpret_cast<HANDLE>(::_get_osfhandle(fd)), buffer, static_cast<DWORD>(length), &transferred, &operation) ? transferred : -1;
+}
+std::int64_t system_pwrite(int fd, const void* buffer, std::size_t length, std::int64_t offset) {
+    OVERLAPPED operation {};
+    operation.Offset = static_cast<DWORD>(offset);
+    operation.OffsetHigh = static_cast<DWORD>(offset >> 32);
+    DWORD transferred = 0;
+    return WriteFile(reinterpret_cast<HANDLE>(::_get_osfhandle(fd)), buffer, static_cast<DWORD>(length), &transferred, &operation) ? transferred : -1;
+}
+int system_sync(int fd) { return FlushFileBuffers(reinterpret_cast<HANDLE>(::_get_osfhandle(fd))) ? 0 : -1; }
+int system_data_sync(int fd) { return system_sync(fd); }
+int system_truncate(int fd, std::int64_t size) { return ::_chsize_s(fd, size); }
+#if defined(__MINGW32__)
+std::int64_t system_size(int fd) { struct ::_stati64 status {}; return ::_fstati64(fd, &status) < 0 ? -1 : status.st_size; }
+#else
+std::int64_t system_size(int fd) { struct ::_stat64 status {}; return ::_fstat64(fd, &status) < 0 ? -1 : status.st_size; }
+#endif
+int system_unlink(const char* path) { return ::_unlink(path); }
+#else
+int system_open(const char* path, int flags) { return ::open(path, flags, 0644); }
+int system_close(int fd) { return ::close(fd); }
+std::int64_t system_pread(int fd, void* buffer, std::size_t length, std::int64_t offset) { return ::pread(fd, buffer, length, offset); }
+std::int64_t system_pwrite(int fd, const void* buffer, std::size_t length, std::int64_t offset) { return ::pwrite(fd, buffer, length, offset); }
+int system_sync(int fd) { return ::fsync(fd); }
+#if defined(__APPLE__)
+int system_data_sync(int fd) { return ::fcntl(fd, F_FULLFSYNC); }
+#else
+int system_data_sync(int fd) { return ::fdatasync(fd); }
+#endif
+int system_truncate(int fd, std::int64_t size) { return ::ftruncate(fd, size); }
+std::int64_t system_size(int fd) { struct stat status {}; return ::fstat(fd, &status) < 0 ? -1 : status.st_size; }
+int system_unlink(const char* path) { return ::unlink(path); }
+#endif
+
 std::string text(v8::Isolate* isolate, v8::Local<v8::Value> value) {
     v8::String::Utf8Value result(isolate, value);
     return *result ? *result : "";
@@ -29,13 +78,13 @@ void open_file(const v8::FunctionCallbackInfo<v8::Value>& info) {
     auto isolate = info.GetIsolate();
     auto path = text(isolate, info[0]);
     auto flags = info[1]->Int32Value(isolate->GetCurrentContext()).FromMaybe(0);
-    auto fd = ::open(path.c_str(), flags, 0644);
+    auto fd = system_open(path.c_str(), flags);
     if (fd < 0) return fail(isolate, "open");
     info.GetReturnValue().Set(fd);
 }
 
 void close_file(const v8::FunctionCallbackInfo<v8::Value>& info) {
-    if (::close(info[0].As<v8::Int32>()->Value()) < 0) fail(info.GetIsolate(), "close");
+    if (system_close(info[0].As<v8::Int32>()->Value()) < 0) fail(info.GetIsolate(), "close");
 }
 
 void pread_file(const v8::FunctionCallbackInfo<v8::Value>& info) {
@@ -45,7 +94,7 @@ void pread_file(const v8::FunctionCallbackInfo<v8::Value>& info) {
     auto offset = view->ByteOffset() + info[2]->IntegerValue(isolate->GetCurrentContext()).FromMaybe(0);
     auto length = info[3]->IntegerValue(isolate->GetCurrentContext()).FromMaybe(0);
     auto file_offset = info[4]->IntegerValue(isolate->GetCurrentContext()).FromMaybe(0);
-    auto read = ::pread(info[0].As<v8::Int32>()->Value(), static_cast<char*>(store->Data()) + offset, length, file_offset);
+    auto read = system_pread(info[0].As<v8::Int32>()->Value(), static_cast<char*>(store->Data()) + offset, length, file_offset);
     if (read < 0) return fail(isolate, "pread");
     info.GetReturnValue().Set(static_cast<double>(read));
 }
@@ -57,28 +106,28 @@ void pwrite_file(const v8::FunctionCallbackInfo<v8::Value>& info) {
     auto offset = view->ByteOffset() + info[2]->IntegerValue(isolate->GetCurrentContext()).FromMaybe(0);
     auto length = info[3]->IntegerValue(isolate->GetCurrentContext()).FromMaybe(0);
     auto file_offset = info[4]->IntegerValue(isolate->GetCurrentContext()).FromMaybe(0);
-    auto written = ::pwrite(info[0].As<v8::Int32>()->Value(), static_cast<char*>(store->Data()) + offset, length, file_offset);
+    auto written = system_pwrite(info[0].As<v8::Int32>()->Value(), static_cast<char*>(store->Data()) + offset, length, file_offset);
     if (written < 0) return fail(isolate, "pwrite");
     info.GetReturnValue().Set(static_cast<double>(written));
 }
 
 void sync_file(const v8::FunctionCallbackInfo<v8::Value>& info) {
-    if (::fsync(info[0].As<v8::Int32>()->Value()) < 0) fail(info.GetIsolate(), "fsync");
+    if (system_sync(info[0].As<v8::Int32>()->Value()) < 0) fail(info.GetIsolate(), "fsync");
 }
 
 void data_sync_file(const v8::FunctionCallbackInfo<v8::Value>& info) {
-    if (::fdatasync(info[0].As<v8::Int32>()->Value()) < 0) fail(info.GetIsolate(), "fdatasync");
+    if (system_data_sync(info[0].As<v8::Int32>()->Value()) < 0) fail(info.GetIsolate(), "fdatasync");
 }
 
 void truncate_file(const v8::FunctionCallbackInfo<v8::Value>& info) {
     auto context = info.GetIsolate()->GetCurrentContext();
-    if (::ftruncate(info[0].As<v8::Int32>()->Value(), info[1]->IntegerValue(context).FromMaybe(0)) < 0) fail(info.GetIsolate(), "truncate");
+    if (system_truncate(info[0].As<v8::Int32>()->Value(), info[1]->IntegerValue(context).FromMaybe(0)) < 0) fail(info.GetIsolate(), "truncate");
 }
 
 void file_size(const v8::FunctionCallbackInfo<v8::Value>& info) {
-    struct stat status {};
-    if (::fstat(info[0].As<v8::Int32>()->Value(), &status) < 0) return fail(info.GetIsolate(), "size");
-    info.GetReturnValue().Set(static_cast<double>(status.st_size));
+    auto size = system_size(info[0].As<v8::Int32>()->Value());
+    if (size < 0) return fail(info.GetIsolate(), "size");
+    info.GetReturnValue().Set(static_cast<double>(size));
 }
 
 void rename_file(const v8::FunctionCallbackInfo<v8::Value>& info) {
@@ -86,7 +135,7 @@ void rename_file(const v8::FunctionCallbackInfo<v8::Value>& info) {
 }
 
 void unlink_file(const v8::FunctionCallbackInfo<v8::Value>& info) {
-    if (::unlink(text(info.GetIsolate(), info[0]).c_str()) < 0) fail(info.GetIsolate(), "unlink");
+    if (system_unlink(text(info.GetIsolate(), info[0]).c_str()) < 0) fail(info.GetIsolate(), "unlink");
 }
 
 void exists_file(const v8::FunctionCallbackInfo<v8::Value>& info) {

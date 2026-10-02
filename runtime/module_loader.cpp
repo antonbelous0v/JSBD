@@ -49,8 +49,8 @@ std::string ModuleLoader::normalize(const std::string& specifier, const std::str
 }
 
 v8::MaybeLocal<v8::Module> ModuleLoader::resolve(v8::Local<v8::Context> context, v8::Local<v8::String> specifier, v8::Local<v8::FixedArray>, v8::Local<v8::Module> referrer) {
-    auto isolate = context->GetIsolate();
-    auto origin = referrer->GetScriptOrigin().ResourceName().As<v8::String>();
+    auto isolate = active_loader->isolate_;
+    auto origin = referrer->GetResourceName().As<v8::String>();
     return active_loader->compile(context, active_loader->normalize(utf8(isolate, specifier), utf8(isolate, origin)));
 }
 

@@ -4,6 +4,7 @@ import test from "node:test"
 import { BinaryReader } from "../js/binary/reader.js"
 import { BinaryWriter } from "../js/binary/writer.js"
 import { crc32c } from "../js/binary/checksum.js"
+import { CorruptionError, ValidationError } from "../js/errors.js"
 
 test("binary values round trip", () => {
   const bytes = new Uint8Array(128)
@@ -18,4 +19,9 @@ test("binary values round trip", () => {
   assert.equal(reader.readF64(), Math.PI)
   assert.equal(reader.readString(), "Привіт")
   assert.equal(crc32c(new TextEncoder().encode("123456789")), 0xe3069283)
+})
+
+test("binary codecs fail before crossing buffer bounds", () => {
+  assert.throws(() => new BinaryWriter(new Uint8Array(1)).writeU16(1), ValidationError)
+  assert.throws(() => new BinaryReader(new Uint8Array(1)).readU16(), CorruptionError)
 })

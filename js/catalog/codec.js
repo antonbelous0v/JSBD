@@ -1,10 +1,9 @@
 import { BinaryReader } from "../binary/reader.js"
 import { BinaryWriter } from "../binary/writer.js"
 import { Column, TableSchema } from "./schema.js"
+import { encodeUtf8 } from "../binary/utf8.js"
 
-const encoder = new TextEncoder()
-
-function stringSize(value) { return 4 + encoder.encode(value).length }
+function stringSize(value) { return 4 + encodeUtf8(value).length }
 
 export function encodeCatalog(tables) {
   let size = 4

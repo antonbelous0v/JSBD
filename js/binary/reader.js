@@ -1,6 +1,5 @@
 import { CorruptionError } from "../errors.js"
-
-const decoder = new TextDecoder("utf-8", { fatal: true })
+import { decodeUtf8 } from "./utf8.js"
 
 export class BinaryReader {
   constructor(buffer) {
@@ -29,6 +28,6 @@ export class BinaryReader {
   }
 
   readString() {
-    return decoder.decode(this.readBytes(this.readU32()))
+    return decodeUtf8(this.readBytes(this.readU32()))
   }
 }

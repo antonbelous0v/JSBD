@@ -2,15 +2,14 @@ import { BinaryReader } from "../binary/reader.js"
 import { BinaryWriter } from "../binary/writer.js"
 import { DataType } from "../constants.js"
 import { ValidationError } from "../errors.js"
-
-const encoder = new TextEncoder()
+import { encodeUtf8 } from "../binary/utf8.js"
 
 function valueSize(type, value) {
   if (value === null) return 0
   if (type === DataType.BOOLEAN) return 1
   if (type === DataType.INT32) return 4
   if (type === DataType.INT64 || type === DataType.FLOAT64 || type === DataType.TIMESTAMP) return 8
-  if (type === DataType.TEXT) return 4 + encoder.encode(value).length
+  if (type === DataType.TEXT) return 4 + encodeUtf8(value).length
   throw new ValidationError(`Unsupported type ${type}`)
 }
 

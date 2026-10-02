@@ -1,6 +1,5 @@
 import { ValidationError } from "../errors.js"
-
-const encoder = new TextEncoder()
+import { encodeUtf8 } from "./utf8.js"
 
 export class BinaryWriter {
   constructor(buffer) {
@@ -29,7 +28,7 @@ export class BinaryWriter {
   }
 
   writeString(value) {
-    const bytes = encoder.encode(value)
+    const bytes = encodeUtf8(value)
     this.writeU32(bytes.length)
     return this.writeBytes(bytes)
   }

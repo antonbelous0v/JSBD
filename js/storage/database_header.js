@@ -29,13 +29,19 @@ export class DatabaseHeader {
 
   static decode(source) {
     const view = new DataView(source.buffer, source.byteOffset, source.byteLength)
-    if (view.getUint32(0, true) !== DATABASE_MAGIC) throw new CorruptionError("Invalid database magic")
-    if (view.getUint16(4, true) !== FORMAT_VERSION || view.getUint32(8, true) !== PAGE_SIZE) throw new CorruptionError("Unsupported database format")
+    if (view.getUint32(0, true) !== DATABASE_MAGIC) {
+      throw new CorruptionError("Invalid database magic")
+    }
+    if (view.getUint16(4, true) !== FORMAT_VERSION || view.getUint32(8, true) !== PAGE_SIZE) {
+      throw new CorruptionError("Unsupported database format")
+    }
     const stored = view.getUint32(CHECKSUM_OFFSET, true)
     view.setUint32(CHECKSUM_OFFSET, 0, true)
     const actual = crc32c(source, 0, DATABASE_HEADER_SIZE)
     view.setUint32(CHECKSUM_OFFSET, stored, true)
-    if (actual !== stored) throw new CorruptionError("Database header checksum mismatch")
+    if (actual !== stored) {
+      throw new CorruptionError("Database header checksum mismatch")
+    }
     return new DatabaseHeader({ databaseId: view.getBigUint64(16, true), catalogRoot: view.getUint32(24, true), freeListRoot: view.getUint32(28, true), checkpointLSN: view.getBigUint64(32, true), pageCount: view.getUint32(40, true) })
   }
 }

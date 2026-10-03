@@ -24,7 +24,9 @@ export class WriteAheadLog {
         host.fs.truncate(fd, validSize)
         size = validSize
       }
-      if (records.length) nextLSN = records.at(-1).lsn + 1n
+      if (records.length) {
+        nextLSN = records.at(-1).lsn + 1n
+      }
     }
     return new WriteAheadLog(host, path, fd, size, nextLSN)
   }
@@ -32,36 +34,52 @@ export class WriteAheadLog {
   append(transactionId, type, pageId, payload) {
     const record = new WalRecord({ lsn: this.nextLSN++, transactionId, type, pageId, payload })
     const bytes = record.encode()
-    if (this.host.fs.pwrite(this.fd, bytes, 0, bytes.length, this.offset) !== bytes.length) throw new Error("Short WAL write")
+    if (this.host.fs.pwrite(this.fd, bytes, 0, bytes.length, this.offset) !== bytes.length) {
+      throw new Error("Short WAL write")
+    }
     this.offset += bytes.length
     this.bytesWritten += bytes.length
     return record.lsn
   }
 
   sync(lsn = this.nextLSN - 1n) {
-    if (lsn <= this.durableLSN) return
+    if (lsn <= this.durableLSN) {
+      return
+    }
     this.host.fs.fsync(this.fd)
     this.host.debug.crashPoint("after-wal-fsync")
     this.durableLSN = lsn
     this.fsyncs += 1
   }
 
-  *records() { yield* WriteAheadLog.readAll(this.host, this.fd, this.offset) }
+  * records() {
+    yield* WriteAheadLog.readAll(this.host, this.fd, this.offset)
+  }
 
-  static *readAll(host, fd, size) {
+  static* readAll(host, fd, size) {
     let offset = 0
     while (offset < size) {
-      if (size - offset < WAL_HEADER_SIZE) return
+      if (size - offset < WAL_HEADER_SIZE) {
+        return
+      }
       const header = new Uint8Array(WAL_HEADER_SIZE)
-      if (host.fs.pread(fd, header, 0, header.length, offset) !== header.length) throw new CorruptionError("Cannot read WAL header")
+      if (host.fs.pread(fd, header, 0, header.length, offset) !== header.length) {
+        throw new CorruptionError("Cannot read WAL header")
+      }
       const length = new DataView(header.buffer).getUint32(4, true)
-      if (length < WAL_HEADER_SIZE || offset + length > size) return
+      if (length < WAL_HEADER_SIZE || offset + length > size) {
+        return
+      }
       const bytes = new Uint8Array(length)
-      if (host.fs.pread(fd, bytes, 0, length, offset) !== length) throw new CorruptionError("Cannot read WAL record")
+      if (host.fs.pread(fd, bytes, 0, length, offset) !== length) {
+        throw new CorruptionError("Cannot read WAL record")
+      }
       yield WalRecord.decode(bytes)
       offset += length
     }
   }
 
-  close() { this.host.fs.close(this.fd) }
+  close() {
+    this.host.fs.close(this.fd)
+  }
 }

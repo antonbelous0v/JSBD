@@ -8,5 +8,10 @@ const source = fs.readFileSync(process.argv[2])
 const bytes = new Uint8Array(PAGE_SIZE)
 bytes.set(source.subarray(0, PAGE_SIZE))
 
-try { Page.decode(bytes, 0) }
-catch (error) { if (!(error instanceof CorruptionError) && !(error instanceof RangeError)) throw error }
+try {
+  Page.decode(bytes, 0)
+} catch (error) {
+  if (!(error instanceof CorruptionError) && !(error instanceof RangeError)) {
+    throw error
+  }
+}

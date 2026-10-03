@@ -18,35 +18,49 @@ measure("create schema", 1, () => database.execute("CREATE TABLE records (id BIG
 
 measure("bulk insert", count, () => {
   database.execute("BEGIN")
-  for (let index = 0; index < count; index += 1) database.execute(`INSERT INTO records VALUES (${index}, ${index % 20}, ${index * 3}, 'record-${index}')`)
+  for (let index = 0; index < count; index += 1) {
+    database.execute(`INSERT INTO records VALUES (${index}, ${index % 20}, ${index * 3}, 'record-${index}')`)
+  }
   database.execute("COMMIT")
 })
 
 measure("indexed point read", count, () => {
-  for (let index = 0; index < count; index += 1) database.execute(`SELECT value FROM records WHERE id = ${index}`)
+  for (let index = 0; index < count; index += 1) {
+    database.execute(`SELECT value FROM records WHERE id = ${index}`)
+  }
 })
 
 measure("indexed reads in tx", count, () => {
   database.execute("BEGIN")
-  for (let index = 0; index < count; index += 1) database.execute(`SELECT value FROM records WHERE id = ${index}`)
+  for (let index = 0; index < count; index += 1) {
+    database.execute(`SELECT value FROM records WHERE id = ${index}`)
+  }
   database.execute("COMMIT")
 })
 
 measure("sequential predicate", 100, () => {
-  for (let index = 0; index < 100; index += 1) database.execute(`SELECT id FROM records WHERE category = ${index % 20}`)
+  for (let index = 0; index < 100; index += 1) {
+    database.execute(`SELECT id FROM records WHERE category = ${index % 20}`)
+  }
 })
 
 measure("bounded range", 100, () => {
-  for (let index = 0; index < 100; index += 1) database.execute(`SELECT id FROM records WHERE id >= ${index} AND id < ${index + 100} LIMIT 25`)
+  for (let index = 0; index < 100; index += 1) {
+    database.execute(`SELECT id FROM records WHERE id >= ${index} AND id < ${index + 100} LIMIT 25`)
+  }
 })
 
 measure("aggregate scan", 100, () => {
-  for (let index = 0; index < 100; index += 1) database.execute("SELECT COUNT(*), SUM(value), MIN(value), MAX(value), AVG(value) FROM records")
+  for (let index = 0; index < 100; index += 1) {
+    database.execute("SELECT COUNT(*), SUM(value), MIN(value), MAX(value), AVG(value) FROM records")
+  }
 })
 
 measure("transactional update", 100, () => {
   database.execute("BEGIN")
-  for (let index = 0; index < 100; index += 1) database.execute(`UPDATE records SET value = value + 1 WHERE id = ${index}`)
+  for (let index = 0; index < 100; index += 1) {
+    database.execute(`UPDATE records SET value = value + 1 WHERE id = ${index}`)
+  }
   database.execute("COMMIT")
 })
 
@@ -61,7 +75,9 @@ results.push({ name: "autocommit latency", operations: commitCount, milliseconds
 measure("checkpoint", 1, () => database.checkpoint())
 database.close()
 
-measure("reopen", 1, () => { database = Database.open(file, host) })
+measure("reopen", 1, () => {
+  database = Database.open(file, host)
+})
 measure("cold indexed read", 1, () => database.execute(`SELECT value FROM records WHERE id = ${count - 1}`))
 database.close()
 

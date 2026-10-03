@@ -8,7 +8,9 @@ export const WAL_HEADER_SIZE = 40
 
 export class WalRecord {
   constructor({ lsn, transactionId, type, pageId = 0xffffffff, payload = new Uint8Array() }) {
-    if (!(payload instanceof Uint8Array)) throw new ValidationError("WAL payload must be bytes")
+    if (!(payload instanceof Uint8Array)) {
+      throw new ValidationError("WAL payload must be bytes")
+    }
     this.lsn = BigInt(lsn)
     this.transactionId = BigInt(transactionId)
     this.type = type
@@ -26,9 +28,13 @@ export class WalRecord {
 
   static decode(bytes) {
     const reader = new BinaryReader(bytes)
-    if (reader.readU32() !== WAL_MAGIC) throw new CorruptionError("Invalid WAL magic")
+    if (reader.readU32() !== WAL_MAGIC) {
+      throw new CorruptionError("Invalid WAL magic")
+    }
     const length = reader.readU32()
-    if (length !== bytes.length || length < WAL_HEADER_SIZE) throw new CorruptionError("Invalid WAL record length")
+    if (length !== bytes.length || length < WAL_HEADER_SIZE) {
+      throw new CorruptionError("Invalid WAL record length")
+    }
     const lsn = reader.readU64()
     const transactionId = reader.readU64()
     const type = reader.readU16()
@@ -39,7 +45,9 @@ export class WalRecord {
     new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).setUint32(36, 0, true)
     const actual = crc32c(bytes)
     new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).setUint32(36, stored, true)
-    if (stored !== actual || payloadLength !== length - WAL_HEADER_SIZE) throw new CorruptionError("WAL checksum mismatch")
+    if (stored !== actual || payloadLength !== length - WAL_HEADER_SIZE) {
+      throw new CorruptionError("WAL checksum mismatch")
+    }
     return new WalRecord({ lsn, transactionId, type, pageId, payload: reader.readBytes(payloadLength) })
   }
 }

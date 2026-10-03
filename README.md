@@ -199,30 +199,30 @@ The current suite covers binary formats, page persistence, corruption detection,
 
 ## Benchmarks
 
-These numbers are from one Apple Silicon machine using a Release build and Node.js 24 for the benchmark host. They are just a local reference, not a universal score. Storage hardware, V8 version, filesystem behavior, and background load all matter.
+These numbers are from one Apple Silicon machine using a Release build and Node.js 24 for the benchmark host. Each result is the median of five runs. They are just a local reference, not a universal score. Storage hardware, V8 version, filesystem behavior, and background load all matter.
 
 The suite used 2,000 rows unless another count is shown:
 
 | Workload | Result |
 | --- | ---: |
-| B+Tree insert, 100,000 entries | 2,538,125 ops/s |
-| B+Tree lookup, 100,000 entries | 3,792,691 ops/s |
-| Bulk insert in one transaction | 30,802 ops/s |
-| Indexed point read with autocommit | 333 ops/s |
-| Indexed point reads in one transaction | 103,186 ops/s |
-| Sequential predicate scan | 198 ops/s |
-| Bounded range query | 322 ops/s |
-| Aggregate scan | 179 ops/s |
-| Transactional update | 438 ops/s |
-| Autocommit | 334 commits/s |
-| Commit latency p50 | 3.000 ms |
-| Commit latency p95 | 3.053 ms |
-| Commit latency p99 | 3.213 ms |
-| Checkpoint | 7.473 ms |
-| Reopen database | 61.171 ms |
-| First indexed read after reopen | 7.403 ms |
+| B+Tree insert, 100,000 entries | 3,006,279 ops/s |
+| B+Tree lookup, 100,000 entries | 3,346,044 ops/s |
+| Bulk insert in one transaction | 15,831 ops/s |
+| Indexed point read | 122,986 ops/s |
+| Indexed point reads in one transaction | 176,684 ops/s |
+| Sequential predicate scan | 1,760 ops/s |
+| Bounded range query | 19,127 ops/s |
+| Aggregate scan | 1,438 ops/s |
+| Transactional update | 1,280 ops/s |
+| Autocommit write | 163 commits/s |
+| Commit latency p50 | 6.002 ms |
+| Commit latency p95 | 7.964 ms |
+| Commit latency p99 | 8.179 ms |
+| Checkpoint | 5.996 ms |
+| Reopen database | 84.165 ms |
+| First indexed read after reopen | 5.762 ms |
 
-The big difference between the two point-read results is mostly `fsync`. A standalone query gets its own durable transaction. Put a batch inside `BEGIN` and `COMMIT` and it gets much faster.
+Read-only queries do not write to the WAL or call `fsync`. Keeping a batch inside one explicit transaction is still faster because it also avoids setting up a new snapshot for every query.
 
 Run the benchmarks with:
 
@@ -231,7 +231,5 @@ npm run benchmark:btree -- 100000
 npm run benchmark:database -- 2000
 npm run benchmark:suite -- 2000
 ```
-
-A native run with 1,000 inserts and 1,000 point selects took about `0.69 s`, including V8 startup and filesystem work.
 
 So yeah. JavaScript in a database today, JavaScript in a kettle tomorrow ❤️

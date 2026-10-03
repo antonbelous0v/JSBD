@@ -3,9 +3,13 @@ import { BTree } from "../js/index/btree.js"
 const count = Number(process.argv[2] ?? 100000)
 const tree = new BTree()
 const startInsert = process.hrtime.bigint()
-for (let index = 0; index < count; index += 1) tree.insert(index, index)
+for (let index = 0; index < count; index += 1) {
+  tree.insert(index, index)
+}
 const startRead = process.hrtime.bigint()
-for (let index = 0; index < count; index += 1) tree.find(index)
+for (let index = 0; index < count; index += 1) {
+  tree.find(index)
+}
 const end = process.hrtime.bigint()
 
 printResult("insert", count, startInsert, startRead)

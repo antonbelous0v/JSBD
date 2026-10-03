@@ -9,36 +9,68 @@ export class Lexer {
   }
 
   tokenize() {
-    const tokens = []
+    const tokens = new Array(this.sql.length + 1)
+    let count = 0
     while (this.position < this.sql.length) {
       const start = this.position
       const char = this.sql[this.position]
-      if (/\s/.test(char)) { this.position += 1; continue }
-      if (char === "'" || char === '"') { tokens.push(this.string(char, start)); continue }
-      if (/[A-Za-z_]/.test(char)) { tokens.push(this.word(start)); continue }
-      if (/\d/.test(char)) { tokens.push(this.number(start)); continue }
+      const code = this.sql.charCodeAt(this.position)
+      if (isSpace(code) || code > 127 && /\s/u.test(char)) {
+        this.position += 1
+        continue
+      }
+      if (char === "'" || char === "\"") {
+        tokens[count++] = this.string(char, start)
+        continue
+      }
+      if (isLetter(code) || code === 95) {
+        tokens[count++] = this.word(start)
+        continue
+      }
+      if (isDigit(code)) {
+        tokens[count++] = this.number(start)
+        continue
+      }
       const pair = this.sql.slice(this.position, this.position + 2)
-      if (["<=", ">=", "!=", "<>"].includes(pair)) { this.position += 2; tokens.push({ type: "operator", value: pair === "<>" ? "!=" : pair, position: start }); continue }
-      if ("(),;.*+-/=<>".includes(char)) { this.position += 1; tokens.push({ type: "symbol", value: char, position: start }); continue }
+      if (pair === "<=" || pair === ">=" || pair === "!=" || pair === "<>") {
+        this.position += 2
+        tokens[count++] = { type: "operator", value: pair === "<>" ? "!=" : pair, position: start }
+        continue
+      }
+      if ("(),;.*+-/=<>".includes(char)) {
+        this.position += 1
+        tokens[count++] = { type: "symbol", value: char, position: start }
+        continue
+      }
       throw new SqlError(`Unexpected character ${char}`, start)
     }
-    tokens.push({ type: "eof", value: "EOF", position: this.position })
+    tokens[count++] = { type: "eof", value: "EOF", position: this.position }
+    tokens.length = count
     return tokens
   }
 
   word(start) {
-    while (this.position < this.sql.length && /[A-Za-z0-9_]/.test(this.sql[this.position])) this.position += 1
+    while (this.position < this.sql.length && isWord(this.sql.charCodeAt(this.position))) {
+      this.position += 1
+    }
     const raw = this.sql.slice(start, this.position)
     const upper = raw.toUpperCase()
-    if (upper === "TRUE" || upper === "FALSE") return { type: "literal", value: upper === "TRUE", position: start }
-    return { type: KEYWORDS.has(upper) ? "keyword" : "identifier", value: KEYWORDS.has(upper) ? upper : raw, position: start }
+    if (upper === "TRUE" || upper === "FALSE") {
+      return { type: "literal", value: upper === "TRUE", position: start }
+    }
+    const keyword = KEYWORDS.has(upper)
+    return { type: keyword ? "keyword" : "identifier", value: keyword ? upper : raw, position: start }
   }
 
   number(start) {
-    while (this.position < this.sql.length && /\d/.test(this.sql[this.position])) this.position += 1
+    while (this.position < this.sql.length && isDigit(this.sql.charCodeAt(this.position))) {
+      this.position += 1
+    }
     if (this.sql[this.position] === ".") {
       this.position += 1
-      while (this.position < this.sql.length && /\d/.test(this.sql[this.position])) this.position += 1
+      while (this.position < this.sql.length && isDigit(this.sql.charCodeAt(this.position))) {
+        this.position += 1
+      }
     }
     const raw = this.sql.slice(start, this.position)
     const value = raw.includes(".") ? Number(raw) : BigInt(raw)
@@ -51,11 +83,28 @@ export class Lexer {
     while (this.position < this.sql.length) {
       const char = this.sql[this.position++]
       if (char === quote) {
-        if (this.sql[this.position] === quote) { value += quote; this.position += 1; continue }
-        return { type: quote === '"' ? "identifier" : "literal", value, position: start }
+        if (this.sql[this.position] === quote) {
+          value += quote
+          this.position += 1
+          continue
+        }
+        return { type: quote === "\"" ? "identifier" : "literal", value, position: start }
       }
       value += char
     }
     throw new SqlError("Unterminated string", start)
   }
+}
+
+function isDigit(code) {
+  return code >= 48 && code <= 57
+}
+function isLetter(code) {
+  return code >= 65 && code <= 90 || code >= 97 && code <= 122
+}
+function isWord(code) {
+  return isLetter(code) || isDigit(code) || code === 95
+}
+function isSpace(code) {
+  return code === 32 || code >= 9 && code <= 13
 }

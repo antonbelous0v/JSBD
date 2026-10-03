@@ -6,8 +6,12 @@ const CHECKSUM_OFFSET = 24
 
 export class Page {
   constructor(id, type, bytes = new Uint8Array(PAGE_SIZE)) {
-    if (!Number.isSafeInteger(id) || id < 0) throw new ValidationError("Invalid page id")
-    if (!(bytes instanceof Uint8Array) || bytes.length !== PAGE_SIZE) throw new ValidationError("Invalid page buffer")
+    if (!Number.isSafeInteger(id) || id < 0) {
+      throw new ValidationError("Invalid page id")
+    }
+    if (!(bytes instanceof Uint8Array) || bytes.length !== PAGE_SIZE) {
+      throw new ValidationError("Invalid page buffer")
+    }
     this.id = id
     this.type = type
     this.bytes = bytes
@@ -32,23 +36,48 @@ export class Page {
 
   static decode(bytes, expectedId) {
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
-    if (bytes.length !== PAGE_SIZE || view.getUint32(0, true) !== PAGE_MAGIC) throw new CorruptionError("Invalid page magic")
-    if (view.getUint16(4, true) !== FORMAT_VERSION) throw new CorruptionError("Unsupported page version")
-    if (view.getUint32(8, true) !== expectedId) throw new CorruptionError("Page id mismatch")
+    if (bytes.length !== PAGE_SIZE || view.getUint32(0, true) !== PAGE_MAGIC) {
+      throw new CorruptionError("Invalid page magic")
+    }
+    if (view.getUint16(4, true) !== FORMAT_VERSION) {
+      throw new CorruptionError("Unsupported page version")
+    }
+    if (view.getUint32(8, true) !== expectedId) {
+      throw new CorruptionError("Page id mismatch")
+    }
     const stored = view.getUint32(CHECKSUM_OFFSET, true)
     view.setUint32(CHECKSUM_OFFSET, 0, true)
     const actual = crc32c(bytes)
     view.setUint32(CHECKSUM_OFFSET, stored, true)
-    if (actual !== stored) throw new CorruptionError(`Checksum mismatch for page ${expectedId}`)
+    if (actual !== stored) {
+      throw new CorruptionError(`Checksum mismatch for page ${expectedId}`)
+    }
     return new Page(expectedId, view.getUint16(12, true), bytes)
   }
 
-  get pageLSN() { return this.view.getBigUint64(16, true) }
-  set pageLSN(value) { this.view.setBigUint64(16, BigInt(value), true) }
-  get freeStart() { return this.view.getUint16(28, true) }
-  set freeStart(value) { this.view.setUint16(28, value, true) }
-  get freeEnd() { return this.view.getUint16(30, true) }
-  set freeEnd(value) { this.view.setUint16(30, value, true) }
+  get pageLSN() {
+    return this.view.getBigUint64(16, true)
+  }
+
+  set pageLSN(value) {
+    this.view.setBigUint64(16, BigInt(value), true)
+  }
+
+  get freeStart() {
+    return this.view.getUint16(28, true)
+  }
+
+  set freeStart(value) {
+    this.view.setUint16(28, value, true)
+  }
+
+  get freeEnd() {
+    return this.view.getUint16(30, true)
+  }
+
+  set freeEnd(value) {
+    this.view.setUint16(30, value, true)
+  }
 
   seal() {
     this.view.setUint32(CHECKSUM_OFFSET, 0, true)

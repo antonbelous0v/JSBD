@@ -17,12 +17,21 @@ export class SlottedPage {
     return new SlottedPage(page)
   }
 
-  get slotCount() { return this.view.getUint16(SLOT_COUNT_OFFSET, true) }
-  get freeSpace() { return this.page.freeEnd - this.page.freeStart }
+  get slotCount() {
+    return this.view.getUint16(SLOT_COUNT_OFFSET, true)
+  }
+
+  get freeSpace() {
+    return this.page.freeEnd - this.page.freeStart
+  }
 
   insert(bytes) {
-    if (!(bytes instanceof Uint8Array) || bytes.length > 0xffff) throw new ValidationError("Invalid tuple")
-    if (this.freeSpace < bytes.length + SLOT_SIZE) return -1
+    if (!(bytes instanceof Uint8Array) || bytes.length > 0xffff) {
+      throw new ValidationError("Invalid tuple")
+    }
+    if (this.freeSpace < bytes.length + SLOT_SIZE) {
+      return -1
+    }
     const slotId = this.slotCount
     const tupleOffset = this.page.freeStart
     this.page.bytes.set(bytes, tupleOffset)
@@ -37,23 +46,30 @@ export class SlottedPage {
 
   get(slotId) {
     const slot = this.slot(slotId)
-    if (!slot.length) return null
+    if (!slot.length) {
+      return null
+    }
     return this.page.bytes.subarray(slot.offset, slot.offset + slot.length)
   }
 
   remove(slotId) {
     const slotOffset = this.slotOffset(slotId)
-    if (this.view.getUint16(slotOffset + 2, true) === 0) return false
+    if (this.view.getUint16(slotOffset + 2, true) === 0) {
+      return false
+    }
     this.view.setUint16(slotOffset + 2, 0, true)
     this.page.dirty = true
     return true
   }
 
-  *entries() {
+  forEach(action) {
     for (let slotId = 0; slotId < this.slotCount; slotId += 1) {
       const bytes = this.get(slotId)
-      if (bytes) yield { slotId, bytes }
+      if (bytes && action(slotId, bytes) === false) {
+        return false
+      }
     }
+    return true
   }
 
   slot(slotId) {
@@ -62,7 +78,9 @@ export class SlottedPage {
   }
 
   slotOffset(slotId) {
-    if (!Number.isSafeInteger(slotId) || slotId < 0 || slotId >= this.slotCount) throw new ValidationError(`Invalid slot ${slotId}`)
+    if (!Number.isSafeInteger(slotId) || slotId < 0 || slotId >= this.slotCount) {
+      throw new ValidationError(`Invalid slot ${slotId}`)
+    }
     return PAGE_SIZE - (slotId + 1) * SLOT_SIZE
   }
 }

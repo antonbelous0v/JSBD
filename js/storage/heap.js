@@ -13,26 +13,34 @@ export class Heap {
       const slots = new SlottedPage(page)
       const slotId = slots.insert(bytes)
       this.bufferPool.unpin(page, slotId >= 0)
-      if (slotId >= 0) return { pageId, slotId }
+      if (slotId >= 0) {
+        return { pageId, slotId }
+      }
     }
     const page = this.bufferPool.allocate(PageType.HEAP)
     const slots = SlottedPage.initialize(page)
     const slotId = slots.insert(bytes)
-    this.pageIds.push(page.id)
+    this.pageIds[this.pageIds.length] = page.id
     this.bufferPool.unpin(page, true)
     return { pageId: page.id, slotId }
   }
 
   get(rid) {
     const page = this.bufferPool.get(rid.pageId)
-    try { return new Uint8Array(new SlottedPage(page).get(rid.slotId)) }
-    finally { this.bufferPool.unpin(page) }
+    try {
+      return new Uint8Array(new SlottedPage(page).get(rid.slotId))
+    } finally {
+      this.bufferPool.unpin(page)
+    }
   }
 
   remove(rid) {
     const page = this.bufferPool.get(rid.pageId)
-    try { return new SlottedPage(page).remove(rid.slotId) }
-    finally { this.bufferPool.unpin(page, true) }
+    try {
+      return new SlottedPage(page).remove(rid.slotId)
+    } finally {
+      this.bufferPool.unpin(page, true)
+    }
   }
 
   update(rid, bytes) {
@@ -40,18 +48,29 @@ export class Heap {
     try {
       const slots = new SlottedPage(page)
       const target = slots.get(rid.slotId)
-      if (!target || target.length !== bytes.length) throw new Error("Tuple update must preserve encoded length")
+      if (!target || target.length !== bytes.length) {
+        throw new Error("Tuple update must preserve encoded length")
+      }
       target.set(bytes)
       return true
-    } finally { this.bufferPool.unpin(page, true) }
+    } finally {
+      this.bufferPool.unpin(page, true)
+    }
   }
 
-  *scan() {
+  forEach(action) {
     for (const pageId of this.pageIds) {
       const page = this.bufferPool.get(pageId)
+      let completed
       try {
-        for (const entry of new SlottedPage(page).entries()) yield { rid: { pageId, slotId: entry.slotId }, bytes: new Uint8Array(entry.bytes) }
-      } finally { this.bufferPool.unpin(page) }
+        completed = new SlottedPage(page).forEach((slotId, bytes) => action(pageId, slotId, bytes))
+      } finally {
+        this.bufferPool.unpin(page)
+      }
+      if (!completed) {
+        return false
+      }
     }
+    return true
   }
 }

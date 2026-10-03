@@ -1,4 +1,5 @@
 build/
+node_modules/
 *.db
 *.db.wal
 *.wal

@@ -84,6 +84,21 @@ test("rolled back DDL stays absent after restart", () => {
   fs.rmSync(directory, { recursive: true })
 })
 
+test("rollback invalidates plans compiled against transactional DDL", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "mydb-plan-rollback-"))
+  const file = path.join(directory, "data.db")
+  const database = Database.open(file, createHost())
+  database.execute("CREATE TABLE plan_table (id BIGINT PRIMARY KEY)")
+  database.execute("BEGIN")
+  database.execute("DROP TABLE plan_table")
+  database.execute("CREATE TABLE plan_table (id BIGINT PRIMARY KEY, temporary_value TEXT)")
+  database.execute("SELECT temporary_value FROM plan_table")
+  database.execute("ROLLBACK")
+  assert.throws(() => database.execute("SELECT temporary_value FROM plan_table"), /Unknown column/)
+  database.close()
+  fs.rmSync(directory, { recursive: true })
+})
+
 test("secondary indexes rebuild from persisted heap rows", () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "mydb-index-"))
   const file = path.join(directory, "data.db")
@@ -115,6 +130,20 @@ test("database metrics expose storage transaction and query work", () => {
   fs.rmSync(directory, { recursive: true })
 })
 
+test("autocommit reads do not write WAL or retain transactions", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "mydb-read-only-"))
+  const file = path.join(directory, "data.db")
+  const database = Database.open(file, createHost())
+  database.execute("CREATE TABLE values_table (id BIGINT PRIMARY KEY)")
+  database.execute("INSERT INTO values_table VALUES (1)")
+  const before = fs.statSync(`${file}.wal`).size
+  assert.deepEqual(database.execute("SELECT * FROM values_table WHERE id = 1"), [[1n]])
+  assert.equal(fs.statSync(`${file}.wal`).size, before)
+  assert.equal(database.transactions.transactions.size, 0)
+  database.close()
+  fs.rmSync(directory, { recursive: true })
+})
+
 test("catalog survives an abrupt close after table creation", () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "mydb-catalog-crash-"))
   const file = path.join(directory, "data.db")
@@ -134,7 +163,11 @@ test("recovery replays committed pages after a crash before data flush", () => {
   const file = path.join(directory, "data.db")
   const host = createHost()
   let crash = false
-  host.debug.crashPoint = point => { if (crash && point === "after-commit-before-page-flush") throw new Error("simulated crash") }
+  host.debug.crashPoint = (point) => {
+    if (crash && point === "after-commit-before-page-flush") {
+      throw new Error("simulated crash")
+    }
+  }
   const database = Database.open(file, host)
   database.execute("CREATE TABLE recovered_rows (id BIGINT PRIMARY KEY, value TEXT NOT NULL)")
   crash = true
@@ -169,7 +202,9 @@ test("catalog spans multiple pages", () => {
   const host = createHost()
   let database = Database.open(file, host)
   database.execute("BEGIN")
-  for (let index = 0; index < 250; index += 1) database.execute(`CREATE TABLE catalog_table_${index} (id BIGINT PRIMARY KEY, value_${index} TEXT NOT NULL)`)
+  for (let index = 0; index < 250; index += 1) {
+    database.execute(`CREATE TABLE catalog_table_${index} (id BIGINT PRIMARY KEY, value_${index} TEXT NOT NULL)`)
+  }
   database.execute("COMMIT")
   database.close()
   database = Database.open(file, host)

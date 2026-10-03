@@ -5,9 +5,15 @@
   "scripts": {
     "test": "node --test tests/*.test.js",
     "check": "node --check js/bootstrap.js",
+    "lint": "eslint js tests benchmarks fuzz",
+    "lint:fix": "eslint js tests benchmarks fuzz --fix",
     "benchmark:btree": "node benchmarks/btree.js",
     "benchmark:database": "node benchmarks/database.js",
     "benchmark:suite": "node benchmarks/suite.js",
     "fuzz:sql": "node fuzz/sql_parser.js"
+  },
+  "devDependencies": {
+    "@stylistic/eslint-plugin": "^5.10.0",
+    "eslint": "^10.12.0"
   }
 }

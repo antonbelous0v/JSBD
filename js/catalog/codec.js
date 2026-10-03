@@ -3,13 +3,17 @@ import { BinaryWriter } from "../binary/writer.js"
 import { Column, TableSchema } from "./schema.js"
 import { encodeUtf8 } from "../binary/utf8.js"
 
-function stringSize(value) { return 4 + encodeUtf8(value).length }
+function stringSize(value) {
+  return 4 + encodeUtf8(value).length
+}
 
 export function encodeCatalog(tables) {
   let size = 4
   for (const table of tables) {
     size += 8 + stringSize(table.schema.name) + 4 + table.pageIds.length * 4 + 4
-    for (const column of table.schema.columns) size += stringSize(column.name) + stringSize(column.type) + 1 + stringSize(column.references?.table ?? "") + stringSize(column.references?.column ?? "")
+    for (const column of table.schema.columns) {
+      size += stringSize(column.name) + stringSize(column.type) + 1 + stringSize(column.references?.table ?? "") + stringSize(column.references?.column ?? "")
+    }
     size += 4 + table.schema.primaryKey.reduce((sum, value) => sum + stringSize(value), 0)
     size += 4 + table.indexes.reduce((sum, index) => sum + stringSize(index.name) + 1 + 4 + index.columns.reduce((total, value) => total + stringSize(value), 0), 0)
   }
@@ -18,15 +22,23 @@ export function encodeCatalog(tables) {
   writer.writeU32(tables.length)
   for (const table of tables) {
     writer.writeU64(table.id).writeString(table.schema.name).writeU32(table.pageIds.length)
-    for (const pageId of table.pageIds) writer.writeU32(pageId)
+    for (const pageId of table.pageIds) {
+      writer.writeU32(pageId)
+    }
     writer.writeU32(table.schema.columns.length)
-    for (const column of table.schema.columns) writer.writeString(column.name).writeString(column.type).writeU8(column.nullable ? 1 : 0).writeString(column.references?.table ?? "").writeString(column.references?.column ?? "")
+    for (const column of table.schema.columns) {
+      writer.writeString(column.name).writeString(column.type).writeU8(column.nullable ? 1 : 0).writeString(column.references?.table ?? "").writeString(column.references?.column ?? "")
+    }
     writer.writeU32(table.schema.primaryKey.length)
-    for (const column of table.schema.primaryKey) writer.writeString(column)
+    for (const column of table.schema.primaryKey) {
+      writer.writeString(column)
+    }
     writer.writeU32(table.indexes.length)
     for (const index of table.indexes) {
       writer.writeString(index.name).writeU8(index.unique ? 1 : 0).writeU32(index.columns.length)
-      for (const column of index.columns) writer.writeString(column)
+      for (const column of index.columns) {
+        writer.writeString(column)
+      }
     }
   }
   return bytes

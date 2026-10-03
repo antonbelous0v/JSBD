@@ -14,12 +14,16 @@ if (command === "inspect-page") {
 } else {
   const path = argumentsList.find(argument => !argument.startsWith("--"))
 
-  if (!path) throw new Error("Usage: mydb database.db [--shell]")
+  if (!path) {
+    throw new Error("Usage: mydb database.db [--shell]")
+  }
 
   const database = Database.open(path)
 
   try {
-    if (argumentsList.includes("--shell")) runShell(database)
+    if (argumentsList.includes("--shell")) {
+      runShell(database)
+    }
   } finally {
     database.close()
   }

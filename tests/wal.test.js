@@ -40,10 +40,12 @@ test("recovery redoes committed work and undoes incomplete work", () => {
     new WalRecord({ lsn: 2n, transactionId: 1n, type: WalType.INSERT }),
     new WalRecord({ lsn: 3n, transactionId: 1n, type: WalType.COMMIT }),
     new WalRecord({ lsn: 4n, transactionId: 2n, type: WalType.BEGIN }),
-    new WalRecord({ lsn: 5n, transactionId: 2n, type: WalType.DELETE })
+    new WalRecord({ lsn: 5n, transactionId: 2n, type: WalType.DELETE }),
   ]
   const actions = []
-  const result = new Recovery({ records: function* () { yield* records } }, { redo: record => actions.push(`redo:${record.lsn}`), undo: record => actions.push(`undo:${record.lsn}`) }).run()
+  const result = new Recovery({ records: function* () {
+    yield* records
+  } }, { redo: record => actions.push(`redo:${record.lsn}`), undo: record => actions.push(`undo:${record.lsn}`) }).run()
   assert.deepEqual(actions, ["redo:2", "undo:5"])
   assert.deepEqual(result, { redone: 1, undone: 1 })
 })

@@ -1,5 +1,6 @@
 import { lowerBound, compareKeys } from "./key.js"
 import { ConstraintError, ValidationError } from "../errors.js"
+import { append, appendAll, insertAt, removeAt, takeLast } from "./node_array.js"
 
 class Node {
   constructor(leaf) {
@@ -13,7 +14,9 @@ class Node {
 
 export class BTree {
   constructor(order = 32, unique = true) {
-    if (!Number.isSafeInteger(order) || order < 4) throw new ValidationError("B+Tree order must be at least four")
+    if (!Number.isSafeInteger(order) || order < 4) {
+      throw new ValidationError("B+Tree order must be at least four")
+    }
     this.order = order
     this.unique = unique
     this.root = new Node(true)
@@ -32,13 +35,19 @@ export class BTree {
     const leaf = this.findLeaf(key, path)
     let index = lowerBound(leaf.keys, key)
     if (index < leaf.keys.length && compareKeys(leaf.keys[index], key) === 0) {
-      if (this.unique) throw new ConstraintError("Duplicate index key")
-      while (index < leaf.keys.length && compareKeys(leaf.keys[index], key) === 0) index += 1
+      if (this.unique) {
+        throw new ConstraintError("Duplicate index key")
+      }
+      while (index < leaf.keys.length && compareKeys(leaf.keys[index], key) === 0) {
+        index += 1
+      }
     }
-    leaf.keys.splice(index, 0, key)
-    leaf.values.splice(index, 0, value)
+    insertAt(leaf.keys, index, key)
+    insertAt(leaf.values, index, value)
     this.size += 1
-    if (leaf.keys.length >= this.order) this.splitLeaf(leaf, path)
+    if (leaf.keys.length >= this.order) {
+      this.splitLeaf(leaf, path)
+    }
   }
 
   remove(key, value) {
@@ -47,8 +56,8 @@ export class BTree {
     let index = lowerBound(leaf.keys, key)
     while (index < leaf.keys.length && compareKeys(leaf.keys[index], key) === 0) {
       if (value === undefined || sameValue(leaf.values[index], value)) {
-        leaf.keys.splice(index, 1)
-        leaf.values.splice(index, 1)
+        removeAt(leaf.keys, index)
+        removeAt(leaf.values, index)
         this.size -= 1
         this.rebalanceLeaf(leaf, path)
         return true
@@ -59,72 +68,82 @@ export class BTree {
   }
 
   rebalanceLeaf(leaf, path) {
-    if (!path.length) return
+    if (!path.length) {
+      return
+    }
     const minimum = Math.ceil((this.order - 1) / 2)
-    if (leaf.keys.length >= minimum) return
-    const { node: parent, index } = path.pop()
+    if (leaf.keys.length >= minimum) {
+      return
+    }
+    const { node: parent, index } = takeLast(path)
     const left = index > 0 ? parent.children[index - 1] : null
     const right = index + 1 < parent.children.length ? parent.children[index + 1] : null
     if (left && left.keys.length > minimum) {
-      leaf.keys.unshift(left.keys.pop())
-      leaf.values.unshift(left.values.pop())
+      insertAt(leaf.keys, 0, takeLast(left.keys))
+      insertAt(leaf.values, 0, takeLast(left.values))
       parent.keys[index - 1] = leaf.keys[0]
       return
     }
     if (right && right.keys.length > minimum) {
-      leaf.keys.push(right.keys.shift())
-      leaf.values.push(right.values.shift())
+      append(leaf.keys, removeAt(right.keys, 0))
+      append(leaf.values, removeAt(right.values, 0))
       parent.keys[index] = right.keys[0]
       return
     }
     if (left) {
-      left.keys.push(...leaf.keys)
-      left.values.push(...leaf.values)
+      appendAll(left.keys, leaf.keys)
+      appendAll(left.values, leaf.values)
       left.next = leaf.next
-      parent.keys.splice(index - 1, 1)
-      parent.children.splice(index, 1)
+      removeAt(parent.keys, index - 1)
+      removeAt(parent.children, index)
     } else if (right) {
-      leaf.keys.push(...right.keys)
-      leaf.values.push(...right.values)
+      appendAll(leaf.keys, right.keys)
+      appendAll(leaf.values, right.values)
       leaf.next = right.next
-      parent.keys.splice(index, 1)
-      parent.children.splice(index + 1, 1)
+      removeAt(parent.keys, index)
+      removeAt(parent.children, index + 1)
     }
     this.rebalanceInternal(parent, path)
   }
 
   rebalanceInternal(node, path) {
     if (node === this.root) {
-      if (node.children.length === 1) this.root = node.children[0]
+      if (node.children.length === 1) {
+        this.root = node.children[0]
+      }
       return
     }
     const minimum = Math.ceil(this.order / 2)
-    if (node.children.length >= minimum) return
-    const { node: parent, index } = path.pop()
+    if (node.children.length >= minimum) {
+      return
+    }
+    const { node: parent, index } = takeLast(path)
     const left = index > 0 ? parent.children[index - 1] : null
     const right = index + 1 < parent.children.length ? parent.children[index + 1] : null
     if (left && left.children.length > minimum) {
-      node.keys.unshift(parent.keys[index - 1])
-      node.children.unshift(left.children.pop())
-      parent.keys[index - 1] = left.keys.pop()
+      insertAt(node.keys, 0, parent.keys[index - 1])
+      insertAt(node.children, 0, takeLast(left.children))
+      parent.keys[index - 1] = takeLast(left.keys)
       return
     }
     if (right && right.children.length > minimum) {
-      node.keys.push(parent.keys[index])
-      node.children.push(right.children.shift())
-      parent.keys[index] = right.keys.shift()
+      append(node.keys, parent.keys[index])
+      append(node.children, removeAt(right.children, 0))
+      parent.keys[index] = removeAt(right.keys, 0)
       return
     }
     if (left) {
-      left.keys.push(parent.keys[index - 1], ...node.keys)
-      left.children.push(...node.children)
-      parent.keys.splice(index - 1, 1)
-      parent.children.splice(index, 1)
+      append(left.keys, parent.keys[index - 1])
+      appendAll(left.keys, node.keys)
+      appendAll(left.children, node.children)
+      removeAt(parent.keys, index - 1)
+      removeAt(parent.children, index)
     } else if (right) {
-      node.keys.push(parent.keys[index], ...right.keys)
-      node.children.push(...right.children)
-      parent.keys.splice(index, 1)
-      parent.children.splice(index + 1, 1)
+      append(node.keys, parent.keys[index])
+      appendAll(node.keys, right.keys)
+      appendAll(node.children, right.children)
+      removeAt(parent.keys, index)
+      removeAt(parent.children, index + 1)
     }
     this.rebalanceInternal(parent, path)
   }
@@ -133,8 +152,10 @@ export class BTree {
     let node = this.root
     while (!node.leaf) {
       let index = lowerBound(node.keys, key)
-      if (index < node.keys.length && compareKeys(key, node.keys[index]) >= 0) index += 1
-      path.push({ node, index })
+      if (index < node.keys.length && compareKeys(key, node.keys[index]) >= 0) {
+        index += 1
+      }
+      append(path, { node, index })
       node = node.children[index]
     }
     return node
@@ -154,15 +175,18 @@ export class BTree {
     this.splits += 1
     if (!path.length) {
       const root = new Node(false)
-      root.keys.push(separator)
-      root.children.push(left, right)
+      append(root.keys, separator)
+      append(root.children, left)
+      append(root.children, right)
       this.root = root
       return
     }
-    const { node: parent, index } = path.pop()
-    parent.keys.splice(index, 0, separator)
-    parent.children.splice(index + 1, 0, right)
-    if (parent.children.length > this.order) this.splitInternal(parent, path)
+    const { node: parent, index } = takeLast(path)
+    insertAt(parent.keys, index, separator)
+    insertAt(parent.children, index + 1, right)
+    if (parent.children.length > this.order) {
+      this.splitInternal(parent, path)
+    }
   }
 
   splitInternal(node, path) {
@@ -175,12 +199,14 @@ export class BTree {
     this.insertParent(node, separator, right, path)
   }
 
-  *range(start, end) {
+  * range(start, end) {
     let leaf = this.findLeaf(start)
     let index = lowerBound(leaf.keys, start)
     while (leaf) {
       while (index < leaf.keys.length) {
-        if (compareKeys(leaf.keys[index], end) > 0) return
+        if (compareKeys(leaf.keys[index], end) > 0) {
+          return
+        }
         yield { key: leaf.keys[index], value: leaf.values[index] }
         index += 1
       }
@@ -189,17 +215,23 @@ export class BTree {
     }
   }
 
-  *scan() {
+  * scan() {
     let node = this.root
-    while (!node.leaf) node = node.children[0]
+    while (!node.leaf) {
+      node = node.children[0]
+    }
     while (node) {
-      for (let index = 0; index < node.keys.length; index += 1) yield { key: node.keys[index], value: node.values[index] }
+      for (let index = 0; index < node.keys.length; index += 1) {
+        yield { key: node.keys[index], value: node.values[index] }
+      }
       node = node.next
     }
   }
 }
 
 function sameValue(left, right) {
-  if (Object.is(left, right)) return true
+  if (Object.is(left, right)) {
+    return true
+  }
   return left && right && left.pageId === right.pageId && left.slotId === right.slotId
 }

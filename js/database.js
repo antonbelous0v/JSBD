@@ -9,6 +9,7 @@ import { Catalog } from "./catalog/catalog.js"
 import { Column, TableSchema } from "./catalog/schema.js"
 import { Table } from "./catalog/table.js"
 import { Parser } from "./sql/parser.js"
+import { FixedCache } from "./sql/fixed_cache.js"
 import { Binder } from "./sql/binder.js"
 import { LogicalPlanner } from "./planner/logical.js"
 import { PhysicalPlanner } from "./planner/physical.js"
@@ -29,6 +30,7 @@ export class Database {
     this.tables = new Map()
     this.currentTransaction = null
     this.queriesExecuted = 0
+    this.queryCache = new FixedCache(256)
   }
 
   static open(path, host = Host) {
@@ -36,12 +38,18 @@ export class Database {
     const wal = WriteAheadLog.open(host, `${path}.wal`)
     new Recovery(wal, {
       redo(record) {
-        if (record.type !== WalType.PAGE_WRITE) return
+        if (record.type !== WalType.PAGE_WRITE) {
+          return
+        }
         let current = null
-        try { current = pager.read(record.pageId) } catch {}
-        if (!current || current.pageLSN < record.lsn) pager.write(Page.decode(new Uint8Array(record.payload), record.pageId))
+        try {
+          current = pager.read(record.pageId)
+        } catch {}
+        if (!current || current.pageLSN < record.lsn) {
+          pager.write(Page.decode(new Uint8Array(record.payload), record.pageId))
+        }
       },
-      undo() {}
+      undo() {},
     }).run(pager.header.checkpointLSN)
     pager.sync()
     pager.reloadHeader()
@@ -66,75 +74,136 @@ export class Database {
     for (const metadata of this.catalog.tables.values()) {
       for (let index = 0; index < metadata.schema.columns.length; index += 1) {
         const column = metadata.schema.columns[index]
-        if (!column.references || column.references.table !== tableName) continue
+        if (!column.references || column.references.table !== tableName) {
+          continue
+        }
         const targetIndex = referenced.schema.indexOf(column.references.column)
-        for (const candidate of this.table(metadata.schema.name).scan(transaction)) if (candidate.row[index] === row[targetIndex]) throw new Error(`Delete restricted by ${metadata.schema.name}.${column.name}`)
+        for (const candidate of this.table(metadata.schema.name).scan(transaction)) {
+          if (candidate.row[index] === row[targetIndex]) {
+            throw new Error(`Delete restricted by ${metadata.schema.name}.${column.name}`)
+          }
+        }
       }
     }
   }
 
   execute(sql) {
+    const cached = this.queryCache.get(sql)
+    if (cached) {
+      return this.executeStatement(cached, true)
+    }
     const results = []
-    for (const statement of new Parser(sql).parse()) results.push(this.executeStatement(statement))
+    const statements = new Parser(sql).parse()
+    if (statements.length === 1 && statements[0].type === "select") {
+      const bound = new Binder(this.catalog).bind(statements[0])
+      this.queryCache.set(sql, bound)
+      return this.executeStatement(bound, true)
+    }
+    for (const statement of statements) {
+      results[results.length] = this.executeStatement(statement)
+    }
     return results.length === 1 ? results[0] : results
   }
 
-  executeStatement(statement) {
+  executeStatement(statement, isBound = false) {
     this.queriesExecuted += 1
-    const bound = new Binder(this.catalog).bind(statement)
-    if (bound.type === "begin") return this.begin()
-    if (bound.type === "commit") return this.commit()
-    if (bound.type === "rollback") return this.rollback()
+    const bound = isBound ? statement : new Binder(this.catalog).bind(statement)
+    if (bound.type === "begin") {
+      return this.begin()
+    }
+    if (bound.type === "commit") {
+      return this.commit()
+    }
+    if (bound.type === "rollback") {
+      return this.rollback()
+    }
     const owned = !this.currentTransaction
-    const transaction = this.currentTransaction ?? this.transactions.begin()
+    const transaction = this.currentTransaction ?? this.transactions.begin(bound.type === "select" || bound.type === "explain")
     try {
       const result = this.run(bound, transaction)
-      if (owned) this.commitTransaction(transaction)
+      if (owned) {
+        this.commitTransaction(transaction)
+      }
       return result
     } catch (error) {
-      if (owned && transaction.state === TransactionState.ACTIVE) { this.transactions.rollback(transaction); this.tables.clear() }
+      if (owned && transaction.state === TransactionState.ACTIVE) {
+        this.transactions.rollback(transaction)
+        this.queryCache.clear()
+        this.tables.clear()
+      }
       throw error
     }
   }
 
   run(statement, transaction) {
-    if (statement.type === "create_table") return this.createTable(statement, transaction)
-    if (statement.type === "drop_table") return this.dropTable(statement, transaction)
-    if (statement.type === "create_index") return this.createIndex(statement, transaction)
-    if (statement.type === "drop_index") return this.dropIndex(statement, transaction)
-    if (statement.type === "insert") return this.insert(statement, transaction)
-    if (statement.type === "update") return this.update(statement, transaction)
-    if (statement.type === "delete") return this.delete(statement, transaction)
-    if (statement.type === "select") return this.select(statement, transaction)
-    if (statement.type === "explain") return this.explain(statement.statement)
+    if (statement.type === "create_table") {
+      return this.createTable(statement, transaction)
+    }
+    if (statement.type === "drop_table") {
+      return this.dropTable(statement, transaction)
+    }
+    if (statement.type === "create_index") {
+      return this.createIndex(statement, transaction)
+    }
+    if (statement.type === "drop_index") {
+      return this.dropIndex(statement, transaction)
+    }
+    if (statement.type === "insert") {
+      return this.insert(statement, transaction)
+    }
+    if (statement.type === "update") {
+      return this.update(statement, transaction)
+    }
+    if (statement.type === "delete") {
+      return this.delete(statement, transaction)
+    }
+    if (statement.type === "select") {
+      return this.select(statement, transaction)
+    }
+    if (statement.type === "explain") {
+      return this.explain(statement.statement)
+    }
     throw new Error(`Unsupported statement ${statement.type}`)
   }
 
   begin() {
-    if (this.currentTransaction) throw new Error("Transaction already active")
+    if (this.currentTransaction) {
+      throw new Error("Transaction already active")
+    }
     this.currentTransaction = this.transactions.begin()
     return { status: "BEGIN" }
   }
 
   commit() {
-    if (!this.currentTransaction) throw new Error("No active transaction")
+    if (!this.currentTransaction) {
+      throw new Error("No active transaction")
+    }
     this.commitTransaction(this.currentTransaction)
     this.currentTransaction = null
     return { status: "COMMIT" }
   }
 
   rollback() {
-    if (!this.currentTransaction) throw new Error("No active transaction")
+    if (!this.currentTransaction) {
+      throw new Error("No active transaction")
+    }
     this.transactions.rollback(this.currentTransaction)
     this.currentTransaction = null
+    this.queryCache.clear()
     this.tables.clear()
     return { status: "ROLLBACK" }
   }
 
   commitTransaction(transaction) {
+    if (transaction.readOnly) {
+      this.transactions.commit(transaction)
+      return
+    }
     const headerChanged = this.catalog.persist()
     const pages = this.bufferPool.dirtyPages()
-    if (headerChanged) pages.push(this.pager.headerPage())
+    if (headerChanged) {
+      pages[pages.length] = this.pager.headerPage()
+    }
     for (const page of pages) {
       page.pageLSN = this.wal.nextLSN
       page.seal()
@@ -142,19 +211,28 @@ export class Database {
     }
     this.transactions.commit(transaction)
     this.host.debug.crashPoint("after-commit-before-page-flush")
-    for (const page of pages) this.pager.write(page)
+    for (const page of pages) {
+      this.pager.write(page)
+    }
     this.pager.sync()
   }
 
   createTable(statement, transaction) {
+    this.queryCache.clear()
     const schema = new TableSchema({ name: statement.name, columns: statement.columns.map(column => new Column({ name: column.name, type: column.dataType, nullable: column.nullable, references: column.references })), primaryKey: statement.primaryKey, unique: statement.unique })
     const table = this.catalog.createTable(schema)
-    for (const columns of schema.unique) table.indexes.push({ name: `${schema.name}_${columns.join("_")}_key`, columns, unique: true })
-    transaction.addUndo(() => { this.catalog.dropTable(schema.name); this.tables.delete(schema.name) })
+    for (const columns of schema.unique) {
+      table.indexes[table.indexes.length] = { name: `${schema.name}_${columns.join("_")}_key`, columns, unique: true }
+    }
+    transaction.addUndo(() => {
+      this.catalog.dropTable(schema.name)
+      this.tables.delete(schema.name)
+    })
     return { status: "CREATE TABLE", table: table.schema.name }
   }
 
   dropTable(statement, transaction) {
+    this.queryCache.clear()
     const metadata = this.catalog.getTable(statement.name)
     this.catalog.dropTable(statement.name)
     this.tables.delete(statement.name)
@@ -163,18 +241,36 @@ export class Database {
   }
 
   createIndex(statement, transaction) {
+    this.queryCache.clear()
     this.catalog.addIndex(statement.table, statement)
     this.tables.delete(statement.table)
-    transaction.addUndo(() => { this.catalog.dropIndex(statement.name); this.tables.delete(statement.table) })
+    transaction.addUndo(() => {
+      this.catalog.dropIndex(statement.name)
+      this.tables.delete(statement.table)
+    })
     return { status: "CREATE INDEX" }
   }
 
   dropIndex(statement, transaction) {
-    const owner = [...this.catalog.tables.values()].find(table => table.indexes.some(index => index.name === statement.name))
+    this.queryCache.clear()
+    let owner
+    for (const table of this.catalog.tables.values()) {
+      for (let index = 0; index < table.indexes.length; index += 1) {
+        if (table.indexes[index].name === statement.name) {
+          owner = table
+          break
+        }
+      }
+      if (owner) {
+        break
+      }
+    }
     const definition = owner?.indexes.find(index => index.name === statement.name)
     this.catalog.dropIndex(statement.name)
     this.tables.delete(owner.schema.name)
-    transaction.addUndo(() => owner.indexes.push(definition))
+    transaction.addUndo(() => {
+      owner.indexes[owner.indexes.length] = definition
+    })
     return { status: "DROP INDEX" }
   }
 
@@ -202,7 +298,9 @@ export class Database {
       return value === null ? null : column.type === DataType.INT32 || column.type === DataType.FLOAT64 ? Number(value) : column.type === DataType.INT64 || column.type === DataType.TIMESTAMP ? BigInt(value) : value
     }]))
     const rows = table.updateWhere(predicate, changes, transaction)
-    if (rows) this.catalog.markDirty()
+    if (rows) {
+      this.catalog.markDirty()
+    }
     return { status: "UPDATE", rows }
   }
 
@@ -214,10 +312,12 @@ export class Database {
 
   select(statement, transaction) {
     const physical = this.plan(statement)
-    return [...new Executor(name => this.table(name), transaction).execute(physical)]
+    return new Executor(name => this.table(name), transaction).execute(physical)
   }
 
-  explain(statement) { return explain(this.plan(statement)) }
+  explain(statement) {
+    return explain(this.plan(statement))
+  }
 
   plan(statement) {
     const bound = statement.references ? statement : new Binder(this.catalog).bind(statement)
@@ -237,7 +337,9 @@ export class Database {
   }
 
   close() {
-    if (this.currentTransaction) this.rollback()
+    if (this.currentTransaction) {
+      this.rollback()
+    }
     this.checkpoint()
     this.wal.close()
     this.pager.close()

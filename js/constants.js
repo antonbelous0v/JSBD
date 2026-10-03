@@ -12,7 +12,7 @@ export const PageType = Object.freeze({
   BTREE_INTERNAL: 3,
   BTREE_LEAF: 4,
   FREELIST: 5,
-  CATALOG: 6
+  CATALOG: 6,
 })
 
 export const WalType = Object.freeze({
@@ -25,13 +25,13 @@ export const WalType = Object.freeze({
   COMMIT: 7,
   ABORT: 8,
   CHECKPOINT: 9,
-  PAGE_WRITE: 10
+  PAGE_WRITE: 10,
 })
 
 export const TransactionState = Object.freeze({
   ACTIVE: "ACTIVE",
   COMMITTED: "COMMITTED",
-  ABORTED: "ABORTED"
+  ABORTED: "ABORTED",
 })
 
 export const DataType = Object.freeze({
@@ -41,5 +41,5 @@ export const DataType = Object.freeze({
   INT64: "INT64",
   FLOAT64: "FLOAT64",
   TEXT: "TEXT",
-  TIMESTAMP: "TIMESTAMP"
+  TIMESTAMP: "TIMESTAMP",
 })

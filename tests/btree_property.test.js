@@ -11,7 +11,10 @@ test("B+Tree matches a sorted map under random operations", () => {
     state = (Math.imul(state, 1664525) + 1013904223) >>> 0
     const key = state % 500
     if (state & 1) {
-      if (!expected.has(key)) { expected.set(key, key * 3); tree.insert(key, key * 3) }
+      if (!expected.has(key)) {
+        expected.set(key, key * 3)
+        tree.insert(key, key * 3)
+      }
     } else {
       assert.equal(tree.remove(key), expected.delete(key))
     }

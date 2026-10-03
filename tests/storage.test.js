@@ -7,6 +7,7 @@ import test from "node:test"
 import { PageType } from "../js/constants.js"
 import { Pager } from "../js/storage/pager.js"
 import { BufferPool } from "../js/storage/buffer_pool.js"
+import { FixedList } from "../js/storage/fixed_list.js"
 import { SlottedPage } from "../js/storage/slotted_page.js"
 import { createHost } from "./host.js"
 import { CorruptionError } from "../js/errors.js"
@@ -76,4 +77,13 @@ test("allocated pages reach disk before the header references them", () => {
   assert.equal(reopened.read(1).type, PageType.CATALOG)
   reopened.close()
   fs.rmSync(directory, { recursive: true })
+})
+
+test("fixed lists reject capacity growth", () => {
+  const list = new FixedList(2)
+  list.add(1)
+  list.add(2)
+  assert.throws(() => list.add(3), /capacity/)
+  assert.equal(list.removeAt(0), 1)
+  assert.equal(list.at(0), 2)
 })
